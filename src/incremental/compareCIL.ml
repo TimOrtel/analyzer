@@ -36,7 +36,7 @@ let should_reanalyze (fdec: Cil.fundec) =
 (* If some CFGs of the two functions to be compared are provided, a fine-grained CFG comparison is done that also determines which
  * nodes of the function changed. If on the other hand no CFGs are provided, the "old" AST comparison on the CIL.file is
  * used for functions. Then no information is collected regarding which parts/nodes of the function changed. *)
-let eqF (a: Cil.fundec) (b: Cil.fundec) (cfgs : (cfg * (cfg * cfg)) option) =
+let eqF (a: Cil.fundec) (b: Cil.fundec) (cfgs : (cfg * (cfg * cfg)) option) (global_context: method_context list) =
   let local_rename_map: (string, string) Hashtbl.t = Hashtbl.create (List.length a.slocals) in
 
   if (List.length a.slocals) = (List.length b.slocals) then
