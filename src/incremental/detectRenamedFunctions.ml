@@ -53,7 +53,7 @@ let getDependencies fromEq = StringMap.map (fun assumption -> assumption.new_met
    statusForNowFunction: see statusForOldFunction;
    methodMapping: Mappings from (fundec of old AST) -> (fundec of now AST) we have already figured out to hold.
    reverseMethodMapping: see method mapping, but from now -> old
-   *)
+*)
 type carryType = {
   statusForOldFunction: functionStatus FundecMap.t;
   statusForNowFunction: functionStatus FundecMap.t;
@@ -85,6 +85,17 @@ let registerMapping oldF nowF data =
    statusForNowFunction=data.statusForNowFunction;
    methodMapping=FundecMap.add oldF nowF data.methodMapping;
    reverseMethodMapping=FundecMap.add nowF oldF data.reverseMethodMapping}
+
+let registerChangedFunction oldF nowF unchangedHeader data =
+  registerStatusForOldF oldF (Modified(nowF, unchangedHeader)) data |>
+  registerStatusForNowF nowF (Modified(oldF, unchangedHeader))
+
+let emptyCarryType = {
+  statusForOldFunction = FundecMap.empty;
+  statusForNowFunction = FundecMap.empty;
+  methodMapping=FundecMap.empty;
+  reverseMethodMapping=FundecMap.empty
+}
 
 (*returns true iff for all dependencies it is true, that the dependency has a corresponding function with the new name and matches the without having dependencies itself and the new name is not already present on the old AST. *)
 let doAllDependenciesMatch (dependencies: dependencies) (oldFunctionMap: f StringMap.t) (newFunctionMap: f StringMap.t) (data: carryType) : bool * carryType =
@@ -128,53 +139,38 @@ let assignStatusToUnassignedFunction data f registerStatus statusMap mapping sta
   else
     data
 
-let detectRenamedFunctions (oldAST: file) (newAST: file) : output FundecMap.t = begin
-  let oldFunctionMap = getFunctionMap oldAST in
-  let nowFunctionMap = getFunctionMap newAST in
+(*Goes through all old functions and looks for now-functions with the same name. If a pair has been found, onMatch is called with the comparison result.
+   On match then modifies the carryType. Returns (list of the functions that have the same name and match, the updated carry type)*)
+let findSameNameMatchingFunctions
+    oldFunctionMap
+    nowFunctionMap
+    (initialData: 'a)
+    (onMatch: fundec -> fundec -> bool -> bool -> string StringMap.t -> 'a -> 'a) : 'a =
+  StringMap.fold (fun _ (f, _) (data: 'a) ->
+      let matchingNewFundec = StringMap.find_opt f.svar.vname nowFunctionMap in
+      match matchingNewFundec with
+      | Some (newFun, _) ->
+        (*Compare if they are similar*)
+        let doMatch, unchangedHeader, _, dependencies = CompareGlobals.eqF f newFun None StringMap.empty in
 
-  let initialData: carryType = {statusForOldFunction = FundecMap.empty;
-                                statusForNowFunction = FundecMap.empty;
-                                methodMapping=FundecMap.empty;
-                                reverseMethodMapping=FundecMap.empty} in
+        let actDependencies = getDependencies dependencies in
 
-  (*Go through all functions, for all that have not been renamed *)
-  let finalData =
-    StringMap.fold (fun _ (f, _) (data: carryType) ->
-        let matchingNewFundec = StringMap.find_opt f.svar.vname nowFunctionMap in
-        match matchingNewFundec with
-        | Some (newFun, _) ->
-          (*Compare if they are similar*)
-          let doMatch, unchangedHeader, _, dependencies = CompareGlobals.eqF f newFun None StringMap.empty in
+        onMatch f newFun doMatch unchangedHeader actDependencies data
+      | None -> data
+    ) oldFunctionMap initialData
 
-          let actDependencies = getDependencies dependencies in
+let fillStatusForUnassignedFunctions oldFunctionMap nowFunctionMap (data: carryType) =
+  data |>
+  (*Now go through all old functions again. Those who have not been assigned a status are removed*)
+  StringMap.fold (fun _ (f, _) (data: carryType) ->
+      assignStatusToUnassignedFunction data f registerStatusForOldF data.statusForOldFunction data.methodMapping Deleted
+    ) oldFunctionMap |>
+  (*now go through all new functions. Those have have not been assigned a mapping are added.*)
+  StringMap.fold (fun _ (nowF, _) (data: carryType) ->
+      assignStatusToUnassignedFunction data nowF registerStatusForNowF data.statusForNowFunction data.reverseMethodMapping Created
+    ) nowFunctionMap
 
-          if doMatch then
-            let doDependenciesMatch, updatedData = doAllDependenciesMatch actDependencies oldFunctionMap nowFunctionMap data in
-            if doDependenciesMatch then
-              registerBiStatus f newFun (SameName(newFun)) updatedData
-            else
-              registerStatusForOldF f (Modified(newFun, unchangedHeader)) data |>
-              registerStatusForNowF newFun (Modified(f, unchangedHeader))
-          else
-            registerStatusForOldF f (Modified(newFun, unchangedHeader)) data |>
-            registerStatusForNowF newFun (Modified(f, unchangedHeader))
-        | None -> data
-      ) oldFunctionMap initialData |>
-    (*At this point we already know of the functions that have changed and stayed the same. We now assign the correct status to all the functions that
-       have been mapped. The functions that have not been mapped are added/removed.*)
-    (*Now go through all old functions again. Those who have not been assigned a status are removed*)
-    StringMap.fold (fun _ (f, _) (data: carryType) ->
-        assignStatusToUnassignedFunction data f registerStatusForOldF data.statusForOldFunction data.methodMapping Deleted
-      ) oldFunctionMap |>
-    (*now go through all new functions. Those have have not been assigned a mapping are added.*)
-    StringMap.fold (fun _ (nowF, _) (data: carryType) ->
-        assignStatusToUnassignedFunction data nowF registerStatusForNowF data.statusForNowFunction data.reverseMethodMapping Created
-      ) nowFunctionMap
-
-  in
-
-  (*Done with the analyis, the following just adjusts the output types.*)
-
+let mapAnalysisResultToOutput oldFunctionMap nowFunctionMap (data: carryType) : output FundecMap.t =
   (*Map back to GFun and exposed function status*)
   let extractOutput funMap invertedFunMap f (s: functionStatus) =
     let getGFun f2 map =
@@ -198,6 +194,32 @@ let detectRenamedFunctions (oldAST: file) (newAST: file) : output FundecMap.t = 
       else if Option.is_some b then b
       else None
     )
-    (FundecMap.mapi (extractOutput oldFunctionMap nowFunctionMap) finalData.statusForOldFunction)
-    (FundecMap.mapi (extractOutput nowFunctionMap oldFunctionMap) finalData.statusForNowFunction)
+    (FundecMap.mapi (extractOutput oldFunctionMap nowFunctionMap) data.statusForOldFunction)
+    (FundecMap.mapi (extractOutput nowFunctionMap oldFunctionMap) data.statusForNowFunction)
+
+let detectRenamedFunctions (oldAST: file) (newAST: file) : output FundecMap.t = begin
+  let oldFunctionMap = getFunctionMap oldAST in
+  let nowFunctionMap = getFunctionMap newAST in
+
+  let initialData: carryType = emptyCarryType in
+
+  (*Go through all functions, for all that have not been renamed *)
+  let finalData = findSameNameMatchingFunctions oldFunctionMap nowFunctionMap initialData (fun oldF nowF doMatch unchangedHeader dependencies data ->
+      if doMatch then
+        let doDependenciesMatch, updatedData = doAllDependenciesMatch dependencies oldFunctionMap nowFunctionMap data in
+        if doDependenciesMatch then
+          registerBiStatus oldF nowF (SameName(nowF)) updatedData
+        else
+          registerChangedFunction oldF nowF unchangedHeader data
+      else
+        registerChangedFunction oldF nowF unchangedHeader data
+    ) |>
+                  (*At this point we already know of the functions that have changed and stayed the same. We now assign the correct status to all the functions that
+                    have not been mapped. The functions that have not been mapped are added/removed.*)
+                  fillStatusForUnassignedFunctions oldFunctionMap nowFunctionMap
+  in
+
+  (*Done with the analyis, the following just adjusts the output types.*)
+
+  mapAnalysisResultToOutput oldFunctionMap nowFunctionMap finalData
 end
