@@ -56,7 +56,7 @@ let compareCilFiles ?(eq=eq_glob) (oldAST: file) (newAST: file) =
   (* Store a map from functionNames in the old file to the function definition*)
   let oldMap = Cil.foldGlobals oldAST addGlobal GlobalMap.empty in
 
-  let renameDetectionResults = detectRenamedFunctions oldAST newAST in
+  let renameDetectionResults = DetectRenamedFunctionsRecursive.detectRenamedFunctions oldAST newAST in
   FundecMap.to_seq renameDetectionResults |>
   Seq.iter
     (fun (fundec, (functionGlobal, status)) ->

@@ -107,7 +107,7 @@ let doAllDependenciesMatch (dependencies: dependencies) (oldFunctionMap: f Strin
 
         let knownMapping = FundecMap.find_opt oldFundec data.methodMapping in
 
-        (*To avoid inconsitencies, if a function has already been mapped to a function, that mapping is reused again.*)
+        (*To avoid inconsistencies, if a function has already been mapped to a function, that mapping is reused again.*)
         match knownMapping with
         | Some(knownFundec) ->
           (*This function has already been mapped*)
