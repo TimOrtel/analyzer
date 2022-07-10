@@ -98,6 +98,21 @@ let eq_glob (a: global) (b: global) (cfgs : (cfg * (cfg * cfg)) option) (global_
   | _ -> ignore @@ Pretty.printf "Not comparable: %a and %a\n" Cil.d_global a Cil.d_global b; false, false, None
 
 let compareCilFiles ?(eq=eq_glob) (oldAST: file) (newAST: file) =
+  Cil.iterGlobals newAST (fun g -> match g with
+      | GFun (f, _) -> (
+          let locals = f.slocals @ f.sformals in
+          let indices = List.mapi (fun i _ -> i) locals |> List.filter (fun _ -> Random.bool ()) in
+
+          indices |>
+          List.iter (fun index ->
+              let varinfo = List.nth locals index in
+
+              varinfo.vname <- Printf.sprintf "updated_name_%s_%d" f.svar.vname index
+            )
+        )
+      | _ -> ()
+    );
+
   let cfgs = if GobConfig.get_string "incremental.compare" = "cfg"
     then Some (CfgTools.getCFG oldAST |> fst, CfgTools.getCFG newAST)
     else None in
