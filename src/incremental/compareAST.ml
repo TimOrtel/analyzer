@@ -8,7 +8,7 @@ and global_identifier = {name: string ; global_t: global_type} [@@deriving ord]
 
 module StringMap = Map.Make(String)
 
-type method_rename_assumption = {original_method_name: string; new_method_name: string; parameter_renames: string StringMap.t}
+type method_rename_assumption = {original_method_name: string; new_method_name: string}
 type method_rename_assumptions = method_rename_assumption VarinfoMap.t
 
 (*rename_mapping is carried through the stack when comparing the AST. Holds a list of rename assumptions.*)
@@ -33,9 +33,8 @@ let rename_mapping_to_string (rename_mapping: rename_mapping) =
   let (local, methods) = rename_mapping in
   let local_string = [%show: (string * string) list] (List.of_seq (StringMap.to_seq local)) in
   let methods_string: string = List.of_seq (VarinfoMap.to_seq methods |> Seq.map snd) |>
-                               List.map (fun x -> match x with {original_method_name; new_method_name; parameter_renames} ->
-                                   "(methodName: " ^ original_method_name ^ " -> " ^ new_method_name ^
-                                   "; renamed_params=" ^ [%show: (string * string) list] (List.of_seq (StringMap.to_seq parameter_renames)) ^ ")") |>
+                               List.map (fun x -> match x with {original_method_name; new_method_name} ->
+                                   "(methodName: " ^ original_method_name ^ " -> " ^ new_method_name ^ ")") |>
                                String.concat ", " in
   "(local=" ^ local_string ^ "; methods=[" ^ methods_string ^ "])"
 
@@ -96,14 +95,14 @@ and mem_typ_acc (a: typ) (b: typ) acc = List.exists (fun p -> match p with (x, y
 
 and pretty_length () l = Pretty.num (List.length l)
 
-and eq_typ_acc (a: typ) (b: typ) (acc: (typ * typ) list) (rename_mapping: rename_mapping) =
+and eq_typ_acc (a: typ) (b: typ) (acc: (typ * typ) list) ?(fun_parameter_name_comparison_enabled: bool = true) (rename_mapping: rename_mapping) =
   if Messages.tracing then Messages.tracei "compareast" "eq_typ_acc %a vs %a (%a, %a)\n" d_type a d_type b pretty_length acc pretty_length !global_typ_acc; (* %a makes List.length calls lazy if compareast isn't being traced *)
   let r = match a, b with
     | TPtr (typ1, attr1), TPtr (typ2, attr2) -> eq_typ_acc typ1 typ2 acc rename_mapping && GobList.equal (eq_attribute rename_mapping) attr1 attr2
     | TArray (typ1, (Some lenExp1), attr1), TArray (typ2, (Some lenExp2), attr2) -> eq_typ_acc typ1 typ2 acc rename_mapping && eq_exp lenExp1 lenExp2 rename_mapping &&  GobList.equal (eq_attribute rename_mapping) attr1 attr2
     | TArray (typ1, None, attr1), TArray (typ2, None, attr2) -> eq_typ_acc typ1 typ2 acc rename_mapping && GobList.equal (eq_attribute rename_mapping) attr1 attr2
     | TFun (typ1, (Some list1), varArg1, attr1), TFun (typ2, (Some list2), varArg2, attr2)
-      -> eq_typ_acc typ1 typ2 acc rename_mapping && GobList.equal (eq_args rename_mapping acc) list1 list2 && varArg1 = varArg2 &&
+      -> eq_typ_acc typ1 typ2 acc rename_mapping && GobList.equal (eq_args rename_mapping acc ~fun_parameter_name_comparison_enabled:fun_parameter_name_comparison_enabled) list1 list2 && varArg1 = varArg2 &&
          GobList.equal (eq_attribute rename_mapping) attr1 attr2
     | TFun (typ1, None, varArg1, attr1), TFun (typ2, None, varArg2, attr2)
       ->  eq_typ_acc typ1 typ2 acc rename_mapping && varArg1 = varArg2 &&
@@ -136,7 +135,7 @@ and eq_typ_acc (a: typ) (b: typ) (acc: (typ * typ) list) (rename_mapping: rename
   if Messages.tracing then Messages.traceu "compareast" "eq_typ_acc %a vs %a\n" d_type a d_type b;
   r
 
-and eq_typ (a: typ) (b: typ) (rename_mapping: rename_mapping) = eq_typ_acc a b [] rename_mapping
+and eq_typ (a: typ) (b: typ) ?(fun_parameter_name_comparison_enabled: bool = true) (rename_mapping: rename_mapping) = eq_typ_acc a b [] ~fun_parameter_name_comparison_enabled:fun_parameter_name_comparison_enabled rename_mapping
 
 and eq_eitems (rename_mapping: rename_mapping) (a: string * exp * location) (b: string * exp * location) = match a, b with
     (name1, exp1, _l1), (name2, exp2, _l2) -> name1 = name2 && eq_exp exp1 exp2 rename_mapping
@@ -148,9 +147,9 @@ and eq_enuminfo (a: enuminfo) (b: enuminfo) (rename_mapping: rename_mapping) =
   GobList.equal (eq_eitems rename_mapping) a.eitems b.eitems
 (* Ignore ereferenced *)
 
-and eq_args (rename_mapping: rename_mapping) (acc: (typ * typ) list) (a: string * typ * attributes) (b: string * typ * attributes) = match a, b with
+and eq_args (rename_mapping: rename_mapping) (acc: (typ * typ) list) (a: string * typ * attributes) (b: string * typ * attributes) ?(fun_parameter_name_comparison_enabled: bool = true)= match a, b with
     (name1, typ1, attr1), (name2, typ2, attr2) ->
-    rename_mapping_aware_name_comparison name1 name2 rename_mapping && eq_typ_acc typ1 typ2 acc rename_mapping && GobList.equal (eq_attribute rename_mapping) attr1 attr2
+    ((not fun_parameter_name_comparison_enabled) || rename_mapping_aware_name_comparison name1 name2 rename_mapping) && eq_typ_acc typ1 typ2 acc rename_mapping && GobList.equal (eq_attribute rename_mapping) attr1 attr2
 
 and eq_attrparam (rename_mapping: rename_mapping) (a: attrparam) (b: attrparam) = match a, b with
   | ACons (str1, attrparams1), ACons (str2, attrparams2) -> str1 = str2 && GobList.equal (eq_attrparam rename_mapping) attrparams1 attrparams2
@@ -191,19 +190,12 @@ and eq_varinfo (a: varinfo) (b: varinfo) (rename_mapping: rename_mapping) =
   in
 
   (*If the following is a method call, we need to check if we have a mapping for that method call. *)
-  let typ_rename_mapping = match b.vtype with
-    | TFun(_, _, _, _) -> (
-        let new_locals = VarinfoMap.find_opt a method_rename_mappings in
-
-        match new_locals with
-        | Some locals ->
-          (locals.parameter_renames, method_rename_mappings)
-        | None -> (StringMap.empty, method_rename_mappings)
-      )
-    | _ -> rename_mapping
+  let fun_parameter_name_comparison_enabled = match b.vtype with
+    | TFun(_, _, _, _) -> false
+    | _ -> true
   in
 
-  let typeCheck = eq_typ a.vtype b.vtype typ_rename_mapping in
+  let typeCheck = eq_typ a.vtype b.vtype ~fun_parameter_name_comparison_enabled:fun_parameter_name_comparison_enabled (StringMap.empty, VarinfoMap.empty)  in
   let attrCheck = GobList.equal (eq_attribute rename_mapping) a.vattr b.vattr in
 
   (*let _ = Printf.printf "Comparing vars: %s = %s\n" a.vname b.vname in *)
