@@ -195,7 +195,7 @@ and eq_varinfo (a: varinfo) (b: varinfo) (rename_mapping: rename_mapping) =
     | _ -> true
   in
 
-  let typeCheck = eq_typ a.vtype b.vtype ~fun_parameter_name_comparison_enabled:fun_parameter_name_comparison_enabled (StringMap.empty, VarinfoMap.empty)  in
+  let typeCheck = eq_typ a.vtype b.vtype ~fun_parameter_name_comparison_enabled:fun_parameter_name_comparison_enabled rename_mapping  in
   let attrCheck = GobList.equal (eq_attribute rename_mapping) a.vattr b.vattr in
 
   (*let _ = Printf.printf "Comparing vars: %s = %s\n" a.vname b.vname in *)
