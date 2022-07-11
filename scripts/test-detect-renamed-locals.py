@@ -1,5 +1,5 @@
 #!/usr/bin/python
-
+import dataclasses
 import os
 import pathlib
 import re
@@ -10,7 +10,7 @@ import tempfile
 from os.path import isdir
 from pathlib import Path
 from pycparser import c_ast, c_parser, parse_file
-from pycparser.c_ast import TypeDecl, ArrayDecl, PtrDecl
+from pycparser.c_ast import TypeDecl, ArrayDecl, PtrDecl, IdentifierType
 from pycparser.c_generator import CGenerator
 
 parser_errors = 0
@@ -19,38 +19,29 @@ skips = 0
 includes = 0
 includes_only_assert = 0
 invalid_solver = 0
+introduced_changes = 0
 
 
 def main():
     regression_folder = Path("./tests/regression")
 
-    # execute_validation_test(regression_folder/"44-trier_analyzer", regression_folder/"44-trier_analyzer/21-Pproc.c")
+    introduce_changes = True
+
+    # execute_validation_test(regression_folder / "23-partitioned_arrays_last",
+    #                         regression_folder / "23-partitioned_arrays_last/02-pointers_array.c", True)
     #
     # return
 
     excluded = [
         "44-trier_analyzer/33-recA.c",
         # Even though the same file is read in, the type of rec#i differes from int * to int?!
-        "09-regions/25-usb_bus_list_nr.c",  # linux/list.h: Datei oder Verzeichnis nicht gefunden
-        "09-regions/07-kernel_list_rc.c",  # linux/list.h: Datei oder Verzeichnis nicht gefunden
-        "09-regions/08-kernel_list_nr.c",  # linux/list.h: Datei oder Verzeichnis nicht gefunden
-        "09-regions/15-kernel_foreach_nr.c",  # linux/list.h: Datei oder Verzeichnis nicht gefunden
-        "09-regions/14-kernel_foreach_rc.c",  # linux/list.h: Datei oder Verzeichnis nicht gefunden
-        "04-mutex/48-assign_spawn.c",  # linux/list.h: Datei oder Verzeichnis nicht gefunden
-        "04-mutex/40-rw_lock_rc.c",  # linux/list.h: Datei oder Verzeichnis nicht gefunden
-        "04-mutex/33-kernel_rc.c",  # linux/list.h: Datei oder Verzeichnis nicht gefunden
-        "04-mutex/39-rw_lock_nr.c",  # linux/list.h: Datei oder Verzeichnis nicht gefunden
-        "04-mutex/34-kernel_nr.c",  # linux/list.h: Datei oder Verzeichnis nicht gefunden
         "04-mutex/53-kernel-spinlock.c",  # Kernel is broken.
-        "42-annotated-precision/25-34_01-nested.c",  # Wrong solver? slr3
-        "42-annotated-precision/26-34_02-hybrid.c",  # slr4
         "56-witness/01-base-lor-enums.c",  # 0evals?
         "56-witness/02-base-lor-addr.c",  # 0evals?
         "56-witness/03-int-log-short.c",  # 0evals?
         "56-witness/04-base-priv-sync-prune.c",  # 0evals?
-        "07-uninit/19-struct_in_union_bad.c", #Type uninion problems
-        "44-trier_analyzer/09-G1.c", #Also renamed glob var
-        "44-trier_analyzer/21-Pproc.c" #renamed function.
+        "44-trier_analyzer/09-G1.c",  # Also renamed glob var
+        "44-trier_analyzer/21-Pproc.c"  # renamed function.
     ]
 
     # folder = regression_folder / "07-uninit"
@@ -70,10 +61,14 @@ def main():
                 filename, extension = os.path.splitext(testFile.name)
                 if extension == ".c" and not (f"{folder.name}/{testFile.name}" in excluded):
                     total_tests += 1
-                    if execute_validation_test(folder, testFile):
+                    if execute_validation_test(folder, testFile, introduce_changes):
                         executed_tests += 1
 
+    global introduced_changes
+
     print(f"Executed {executed_tests}/{total_tests}")
+    if introduce_changes:
+        print(f"Introduced changes in {introduced_changes}/{executed_tests}")
 
     global parser_errors
     global struct_occurrences
@@ -90,7 +85,7 @@ def main():
     print("Invalid solver: " + str(invalid_solver))
 
 
-def execute_validation_test(folder: Path, test_file: Path):
+def execute_validation_test(folder: Path, test_file: Path, introduce_changes: bool):
     print(f"Executing test: {folder.name}/{test_file.name}")
 
     global parser_errors
@@ -99,6 +94,7 @@ def execute_validation_test(folder: Path, test_file: Path):
     global includes
     global invalid_solver
     global includes_only_assert
+    global introduced_changes
 
     extra_params = ""
 
@@ -130,9 +126,9 @@ def execute_validation_test(folder: Path, test_file: Path):
         invalid_solver += 1
         return False
 
-    updated_file = create_file_with_renamed_locals(test_file)
+    modified_file_result = create_modified_file(test_file, introduce_changes)
 
-    if updated_file is None:
+    if modified_file_result is None:
         print("Aborted test due to parsing error.")
         parser_errors += 1
         return False
@@ -144,7 +140,7 @@ def execute_validation_test(folder: Path, test_file: Path):
     subprocess.run(f"./goblint {args} --enable incremental.save {test_file}", shell=True, capture_output=True)
 
     command = subprocess.run(
-        f"./goblint {args} --enable incremental.load --set save_run {base}/{test_file}-incrementalrun {updated_file.name}",
+        f"./goblint {args} --enable incremental.load --set save_run {base}/{test_file}-incrementalrun {modified_file_result.tmp.name}",
         shell=True, text=True, capture_output=True)
 
     found_line = False
@@ -153,12 +149,20 @@ def execute_validation_test(folder: Path, test_file: Path):
         if line.startswith("change_info = "):
             match = re.search("; changed = (\d+)", line)
             change_count = int(match.group(1))
-            if change_count != 0:
+
+            if introduce_changes and modified_file_result.introduced_changes:
+                invalid_change_count = change_count == 0
+                expected = "> 0"
+            else:
+                invalid_change_count = change_count != 0
+                expected = "= 0"
+
+            if invalid_change_count != 0:
                 print("-----------------------------------------------------------------")
                 print(command.stdout)
                 print("-----------------------------------------------------------------")
-                print(f"Invalid change count={change_count}. Expected 0.")
-                cleanup(folder, test_file, updated_file)
+                print(f"Invalid change count={change_count}. Expected {expected}.")
+                cleanup(folder, test_file, modified_file_result.tmp)
                 sys.exit(-1)
             found_line = True
             break
@@ -166,10 +170,13 @@ def execute_validation_test(folder: Path, test_file: Path):
     if not found_line:
         print("Could not find line with change count.")
         print(command.stdout)
-        cleanup(folder, test_file, updated_file)
+        cleanup(folder, test_file, modified_file_result.tmp)
         sys.exit(-1)
 
-    cleanup(folder, test_file, updated_file)
+    if modified_file_result.introduced_changes:
+        introduced_changes += 1
+
+    cleanup(folder, test_file, modified_file_result.tmp)
 
     return True
 
@@ -179,24 +186,45 @@ def cleanup(folder: Path, test: Path, updated_file):
     shutil.rmtree(folder / f"{test.name}-incrementalrun")
 
 
+def find_local_vars(node, on_node_found):
+    if node.body.block_items is not None:
+        for child in node.body.block_items:
+            if isinstance(child, c_ast.Decl):
+                if isinstance(child.type, c_ast.TypeDecl) or isinstance(child.type, c_ast.ArrayDecl):
+                    on_node_found(child)
+
+
+def rename_decl(node, new_name):
+    if isinstance(node.type, TypeDecl) or isinstance(node.type, ArrayDecl) or isinstance(node.type, PtrDecl):
+        node.name = new_name
+        if isinstance(node.type, TypeDecl):
+            node.type.declname = new_name
+        if isinstance(node.type, ArrayDecl):
+            node.type.type.declname = new_name
+        if isinstance(node.type, PtrDecl):
+            node.type.type.declname = new_name
+
+
 class VarDeclVisitor(c_ast.NodeVisitor):
 
     def __init__(self):
-        self.local_variables = []
-        self.function_params = []
+        self.local_variables = {}
+        self.function_params = {}
 
     def visit_FuncDef(self, node):
-        if node.body.block_items is not None:
-            for child in node.body.block_items:
-                if isinstance(child, c_ast.Decl):
-                    if isinstance(child.type, c_ast.TypeDecl) or isinstance(child.type, c_ast.ArrayDecl):
-                        self.local_variables.append(child.name)
+        lv = []
+        fp = []
+
+        find_local_vars(node, lambda f: lv.append(f.name))
         if isinstance(node.decl, c_ast.Decl) and isinstance(node.decl.type, c_ast.FuncDecl):
             func_decl = node.decl.type
             if isinstance(func_decl.args, c_ast.ParamList):
                 for arg in func_decl.args.params:
                     if isinstance(arg, c_ast.Decl):
-                        self.function_params.append(arg.name)
+                        fp.append(arg.name)
+
+        self.local_variables[node.decl.name] = lv
+        self.function_params[node.decl.name] = fp
 
 
 class RenameVariableVisitor(c_ast.NodeVisitor):
@@ -204,23 +232,13 @@ class RenameVariableVisitor(c_ast.NodeVisitor):
     def __init__(self, rename_mapping):
         self.map = rename_mapping
 
-
     def visit_ID(self, node):
         if node.name in self.map:
             node.name = self.map[node.name]
 
-
     def visit_Decl(self, node):
-        if isinstance(node.type, TypeDecl) or isinstance(node.type, ArrayDecl) or isinstance(node.type, PtrDecl):
-            if node.name in self.map:
-                new_name = self.map[node.name]
-                node.name = new_name
-                if isinstance(node.type, TypeDecl):
-                    node.type.declname = new_name
-                if isinstance(node.type, ArrayDecl):
-                    node.type.type.declname = new_name
-                if isinstance(node.type, PtrDecl):
-                    node.type.type.declname = new_name
+        if node.name in self.map:
+            rename_decl(node, self.map[node.name])
 
         if node.init is not None:
             self.visit(node.init)
@@ -228,18 +246,84 @@ class RenameVariableVisitor(c_ast.NodeVisitor):
         self.visit(node.type)
 
 
-def create_file_with_renamed_locals(source_file: Path):
+class IntroduceSemanticChangeVisitor(c_ast.NodeVisitor):
+
+    # legal_local_variables: Only these variables may be used to introduce a change
+    def __init__(self, legal_local_variables):
+        self.in_fun = False
+
+        self.introduced_change = False
+        self.found_vars = []
+        self.introduced_changes = []
+        self.legal_local_variables = legal_local_variables
+
+    def visit_ID(self, node):
+        if self.in_fun:
+            if any(found_var for found_var in self.found_vars if found_var.name == node.name):
+                known_var = [found_var for found_var in self.found_vars if found_var.name == node.name][0]
+
+                # check if we can find another already declared var with the same type
+                other_decls = [var for var in self.found_vars if
+                               var.type == known_var.type and
+                               var.name != known_var.name and
+                               var.name in self.legal_local_variables[self.fun_name]
+                               ]
+
+                # only introduce change if not already done so for this variable
+                if len(other_decls) > 0 and known_var.name not in self.introduced_changes:
+                    node.name = other_decls[0].name
+                    self.introduced_change = True
+                    self.introduced_changes.append(known_var.name)
+                else:
+                    node.name = known_var.name
+
+    def visit_FuncDef(self, node):
+        self.in_fun = True
+        self.fun_name = node.decl.name
+        self.found_vars = []
+        self.introduced_changes = []
+        self.visit(node.decl)
+        if node.param_decls is not None:
+            self.visit(node.param_decls)
+
+        self.visit(node.body)
+        self.in_fun = False
+        self.fun_name = None
+
+    def visit_Decl(self, node):
+        if self.in_fun and isinstance(node.type, c_ast.TypeDecl) or isinstance(node.type, c_ast.ArrayDecl):
+            if isinstance(node.type, TypeDecl) and isinstance(node.type.type, IdentifierType):
+                if len(node.type.type.names) == 1:
+                    self.found_vars.append(LocalVar(node.name, node.type.type.names[0], node.name + "_updated"))
+        if node.init is not None:
+            self.visit(node.init)
+
+        self.visit(node.type)
+
+
+def create_modified_file(source_file: Path, introduce_changes: bool):
     try:
         ast = parse_file(source_file, use_cpp=True)
         v = VarDeclVisitor()
         v.visit(ast)
 
         rename_mapping = {}
-        for local_var in (v.local_variables + v.function_params):
+        local_vars = [x for xs in (list(v.local_variables.values()) + list(v.function_params.values())) for x in xs]
+        for local_var in local_vars:
             rename_mapping[local_var] = local_var + "_updated"
 
-        v = RenameVariableVisitor(rename_mapping)
-        v.visit(ast)
+        if introduce_changes:
+            x = IntroduceSemanticChangeVisitor(v.local_variables)
+            x.visit(ast)
+
+            # print(CGenerator().visit(ast))
+            # print("Introduced change:" + str(x.introduced_change))
+
+            introduced_change = x.introduced_change
+        else:
+            introduced_change = False
+
+        RenameVariableVisitor(rename_mapping).visit(ast)
 
         # print(ast)
 
@@ -249,11 +333,26 @@ def create_file_with_renamed_locals(source_file: Path):
         with open(tmp.name, "w") as f:
             f.write(CGenerator().visit(ast))
 
-        return tmp
+        return ModifiedFileResult(tmp, introduced_change)
     except:
         return None
 
 
+@dataclasses.dataclass
+class ModifiedFileResult:
+    tmp: tempfile.NamedTemporaryFile
+    introduced_changes: bool
+
+
+@dataclasses.dataclass
+class LocalVar:
+    name: str
+    type: str
+    new_name: str
+
+
 if __name__ == '__main__':
-    # create_file_with_renamed_locals("scripts/test.c")
+    # result = create_modified_file(Path("scripts/test.c"), True)
+    # print(result.introduced_changes)
+    # result.tmp.close()
     main()
