@@ -88,6 +88,8 @@ let emptyCarryType = {
 (*Carry type manipulation functions.*)
 
 let registerStatusForOldF f status data =
+  Printf.printf "RegisterStatusForOldF %s=%s\n" (globalElemName f) (pretty status);
+
   {statusForOldElem = GlobalElemMap.add f status data.statusForOldElem;
    statusForNowElem=data.statusForNowElem;
    mapping=data.mapping;
@@ -95,6 +97,8 @@ let registerStatusForOldF f status data =
   }
 
 let registerStatusForNowF f status data =
+  Printf.printf "RegisterStatusForNowF %s=%s\n" (globalElemName f) (pretty status);
+
   {statusForOldElem = data.statusForOldElem;
    statusForNowElem=GlobalElemMap.add f status data.statusForNowElem;
    mapping=data.mapping;

@@ -1,0 +1,4 @@
+foo -> bar
+baz added
+fun1, fun2 equal
+main changed
