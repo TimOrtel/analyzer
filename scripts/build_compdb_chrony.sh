@@ -1,0 +1,1 @@
+./configure && bear -- make chronyd
