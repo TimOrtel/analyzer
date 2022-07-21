@@ -4,18 +4,18 @@ open CilMaps
 include CompareAST
 include CompareCFG
 
-(*(oldVarinfo, newName, unchangedHeader, parent assumption list (used to find cyclic dependencies))*)
-type renameAssumption = varinfo * string * bool * ((varinfo * string) list)
+(*(oldVarinfo, newName, unchangedHeader)*)
+type renameAssumption = varinfo * string * bool
 
 let show (renameAssumption: renameAssumption): string =
-  let (v, n, _, _) = renameAssumption in
+  let (v, n, _) = renameAssumption in
   v.vname ^ " -> " ^ n
 
 module OrderedRenameAssumption = struct
   type t = renameAssumption
 
   (*x.svar.uid cannot be used, as they may overlap between old and now AST*)
-  let compare (from1, to1, _, _) (from2, to2, _, _) =
+  let compare (from1, to1, _) (from2, to2, _) =
     let fromCompare = String.compare from1.vname from2.vname in
     if fromCompare = 0 then String.compare to1 to2
     else fromCompare
@@ -83,9 +83,9 @@ let dequeueAssumption assumption data = {
 
 let dequeueAssumptions (assumptions: (varinfo * string) list) data = {
   basicCarryData=data.basicCarryData;
-  assumptionQueue=filterElems (fun (v, n, _, _) -> not (List.mem (v, n) assumptions)) data.assumptionQueue;
+  assumptionQueue=filterElems (fun (v, n, _) -> not (List.mem (v, n) assumptions)) data.assumptionQueue;
   dependentsMap=data.dependentsMap;
-  assumptions=RenameAssumptionSet.filter (fun (v, n, _, _) -> not (List.mem (v, n) assumptions)) data.assumptions;
+  assumptions=RenameAssumptionSet.filter (fun (v, n, _) -> not (List.mem (v, n) assumptions)) data.assumptions;
 }
 
 let dequeueFirstAssumption data =
@@ -98,7 +98,7 @@ let dequeueFirstAssumption data =
   }
 
 let removeInvalidAssumption (invalidAssumption: renameAssumption) data =
-  let (a, b, _, _) = invalidAssumption in
+  let (a, b, _) = invalidAssumption in
   Printf.printf "Removing invalid assumption: %s -> %s\n" (a.vname) b;
   {
     basicCarryData=data.basicCarryData;
@@ -139,11 +139,11 @@ let emptyExtendedCarryType = {
 (*Marks the function status for the wrong assumptions as Modified/Created/Deleted. Removes the wrong assumption for the assumption queue.
    Then recursivly calls this function on all dependents of the wrong assumption.*)
 let rec propagateWrongRenameAssumption (oldFunctionMap: f StringMap.t) (nowFunctionMap: f StringMap.t) (wrongAssumption: renameAssumption) (data: extendedCarryType) =
-  let (oldVarinfo, nowName, unchangedHeader, _) = wrongAssumption in
+  let (oldVarinfo, nowName, unchangedHeader) = wrongAssumption in
 
   let dependents = Option.value ~default:[] (RenameAssumptionMap.find_opt wrongAssumption data.dependentsMap) in
 
-  let _ = Printf.printf "Wrong: %s -> %s; dependents: %s\n" oldVarinfo.vname nowName ([%show: (string * string) list] (List.map (fun (a, b, _, _) -> a.vname, b) dependents)) in
+  let _ = Printf.printf "Wrong: %s -> %s; dependents: %s\n" oldVarinfo.vname nowName ([%show: (string * string) list] (List.map (fun (a, b, _) -> a.vname, b) dependents)) in
 
   let (oldF, _) = StringMap.find oldVarinfo.vname oldFunctionMap in
 
@@ -175,7 +175,7 @@ let rec propagateWrongRenameAssumption (oldFunctionMap: f StringMap.t) (nowFunct
     in
 
     (*Get all other assumptions that rely on this varinfo*)
-    let otherAssumptions = RenameAssumptionSet.filter (fun (v, _, _, _) -> v.vname = oldVarinfo.vname) updatedData.assumptions |>
+    let otherAssumptions = RenameAssumptionSet.filter (fun (v, _, _) -> v.vname = oldVarinfo.vname) updatedData.assumptions |>
                            RenameAssumptionSet.to_seq in
 
     (*Only propagate changes when names differ, because that means addition/removal.*)
@@ -189,13 +189,43 @@ let rec propagateWrongRenameAssumption (oldFunctionMap: f StringMap.t) (nowFunct
       updatedData
   )
 
+let hasCyclicDependency (parent: renameAssumption) (dependencyList: renameAssumption list) (data: extendedCarryType) : bool * renameAssumption list =
+  let isAssumptionInList (assumption: renameAssumption) (list: renameAssumption list) : bool =
+    let (av, an, _) = assumption in
+    List.exists (fun (v, n, _) -> v = av && n = an) list
+  in
+
+  if isAssumptionInList parent dependencyList then true, []
+  else (
+    let rec find_dependency_in_graph (dep: renameAssumption) (visitedAssumptions: renameAssumption list) : bool * renameAssumption list =
+      match RenameAssumptionMap.find_opt dep data.dependentsMap with
+      | Some dependentsList -> (
+          List.fold_left (fun (recDepFound, carriedVisitedAssumptions) assumption ->
+              (*Quick skip*)
+              if recDepFound || isAssumptionInList assumption carriedVisitedAssumptions then (recDepFound, carriedVisitedAssumptions)
+              else
+                let isThisARecDep: bool = isAssumptionInList assumption dependencyList in
+                if isThisARecDep then
+                  (*Rec dep found. Backtrack.*)
+                  (true, carriedVisitedAssumptions)
+                else (
+                  find_dependency_in_graph assumption (assumption::carriedVisitedAssumptions)
+                )
+            ) (false, visitedAssumptions) dependencyList
+        )
+      | None -> false, visitedAssumptions
+    in
+
+    find_dependency_in_graph parent []
+  )
+
 let rec resolveDependencies (oldFunctionMap: f StringMap.t) (nowFunctionMap: f StringMap.t) (data: extendedCarryType) =
   if isEmpty data.assumptionQueue then data
   else
     let _ = Printf.printf "\nresolveDependencies: \n" in
     let _ = Printf.printf "Assumptions: %s\n" (String.concat ", " (Seq.map show (RenameAssumptionSet.to_seq data.assumptions) |> List.of_seq)) in
 
-    let (oldVarinfo, nowName, unchangedHeader, parentAssumptions), dataDequeued = dequeueFirstAssumption data in
+    let (oldVarinfo, nowName, unchangedHeader), dataDequeued = dequeueFirstAssumption data in
 
     let _ = Printf.printf "Resolving: %s <-> %s\n" oldVarinfo.vname nowName in
 
@@ -233,39 +263,36 @@ let rec resolveDependencies (oldFunctionMap: f StringMap.t) (nowFunctionMap: f S
       if not doMatch || hasIllegalDependency then
         let _ = Printf.printf "not match or illegal dependency: %s -> %s; matches=%b, illegalDep=%b\n" oldVarinfo.vname nowName doMatch hasIllegalDependency in
         (*Functions either did not even match, or they contain a dependency we already know is wrong.*)
-        propagateWrongRenameAssumption oldFunctionMap nowFunctionMap (oldVarinfo, nowName, unchangedHeader, parentAssumptions) dataDequeued |>
+        propagateWrongRenameAssumption oldFunctionMap nowFunctionMap (oldVarinfo, nowName, unchangedHeader) dataDequeued |>
         resolveDependencies oldFunctionMap nowFunctionMap
       else
         let _ = Printf.printf "%s <-> %s match\n" oldVarinfo.vname nowName in
 
-        let dependencyList = Seq.map (fun (vi, newName) -> vi, newName, true, (oldVarinfo, nowName)::parentAssumptions) dependencySeq |>
+        let dependencyList = Seq.map (fun (vi, newName) -> vi, newName, true) dependencySeq |>
                              List.of_seq
         in
 
-        let cyclicDependencyDetected = List.exists (fun (v, newName) ->
-            List.exists (fun (v2, newName2, _, _) -> v.vname = v2.vname && newName = newName2) dependencyList)
-            parentAssumptions
+        let cyclicDependencyDetected, infectedAssumptions = hasCyclicDependency (oldVarinfo, nowName, unchangedHeader) dependencyList data
         in
 
         if cyclicDependencyDetected then
-          let _ = Printf.printf "Cyclic dependency detected: %s \n" (
-              [%show: (string * string) list] (List.map (fun (v, n) -> v.vname, n) ((oldVarinfo, nowName)::parentAssumptions))) in
+          let _ = Printf.printf "Cyclic dependency detected \n" in
 
-          dequeueAssumptions parentAssumptions dataDequeued |>
-          propagateWrongRenameAssumption oldFunctionMap nowFunctionMap (oldVarinfo, nowName, unchangedHeader, parentAssumptions) |>
+          dequeueAssumptions (List.map (fun (a, b, _) -> (a, b))infectedAssumptions) dataDequeued |>
+          propagateWrongRenameAssumption oldFunctionMap nowFunctionMap (oldVarinfo, nowName, unchangedHeader) |>
           resolveDependencies oldFunctionMap nowFunctionMap
         else
           dataDequeued |>
-          registerDependencies dependencyList (oldVarinfo, nowName, unchangedHeader, parentAssumptions) |>
+          registerDependencies dependencyList (oldVarinfo, nowName, unchangedHeader) |>
           enqueueAssumptions dependencyList |>
           resolveDependencies oldFunctionMap nowFunctionMap
     | None ->
       (*No function matching the name was found. As such this rename assumption is wrong.*)
-      propagateWrongRenameAssumption oldFunctionMap nowFunctionMap (oldVarinfo, nowName, unchangedHeader, parentAssumptions) dataDequeued |>
+      propagateWrongRenameAssumption oldFunctionMap nowFunctionMap (oldVarinfo, nowName, unchangedHeader) dataDequeued |>
       resolveDependencies oldFunctionMap nowFunctionMap
 
 let fillStatusForValidAssumptions oldFunctionMap nowFunctionMap (data: extendedCarryType) =
-  RenameAssumptionSet.fold (fun (old, nowName, unchangedHeader, parentAssumptions) data ->
+  RenameAssumptionSet.fold (fun (old, nowName, unchangedHeader) data ->
       let (oF, _) = StringMap.find old.vname oldFunctionMap in
       let (nF, _) = StringMap.find nowName nowFunctionMap in
 
@@ -288,11 +315,11 @@ let detectRenamedFunctions (oldAST: file) (newAST: file) : output GlobalElemMap.
 
         if doMatch then
           let renameMappings = (
-            VarinfoMap.to_seq functionDependencies |> List.of_seq |> List.map (fun (a, b) -> (a, b, true, [oldF.svar, nowF.svar.vname]))
+            VarinfoMap.to_seq functionDependencies |> List.of_seq |> List.map (fun (a, b) -> (a, b, true))
           ) in
 
-          enqueueAssumptions ((oldF.svar, nowF.svar.vname, unchangedHeader, [])::renameMappings) data |>
-          registerDependencies renameMappings (oldF.svar, nowF.svar.vname, unchangedHeader, [])
+          enqueueAssumptions ((oldF.svar, nowF.svar.vname, unchangedHeader)::renameMappings) data |>
+          registerDependencies renameMappings (oldF.svar, nowF.svar.vname, unchangedHeader)
         else
           modifyBasicCarryData (registerStatusForOldF oldG (Modified(nowG, unchangedHeader))) data |>
           modifyBasicCarryData (registerStatusForNowF nowG (Modified(oldG, unchangedHeader)))
