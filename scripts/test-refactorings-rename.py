@@ -22,17 +22,18 @@ invalid_solver = 0
 introduced_changes = 0
 renamed_a_function = 0
 
+
 # to support library headers, first clone https://github.com/eliben/pycparser to the directory next of the analyzer folder.
 # Then comment the lines out and in that are described that way.
 
 def main():
     regression_folder = Path("./tests/regression")
 
-    task = TaskRenameLocals(False)
+    task = TaskRenameFunction(False)
 
-    test = regression_folder / "25-vla/02-loop.c"
-    execute_validation_test(test.parent, test, task)
-    return
+    # test = regression_folder / "25-vla/02-loop.c"
+    # execute_validation_test(test.parent, test, task)
+    # return
 
     excluded = [
         "44-trier_analyzer/33-recA.c",
@@ -45,6 +46,23 @@ def main():
         "44-trier_analyzer/09-G1.c",  # Also renamed glob var
         "44-trier_analyzer/21-Pproc.c"  # renamed function.
     ]
+
+    if isinstance(task, TaskRenameFunction) and task.use_recursive_detection_algorithm and False:
+        excluded = excluded + [
+            "44-trier_analyzer/23-rec0.c",
+            "44-trier_analyzer/24-rec1.c",
+            "44-trier_analyzer/25-rec2.c",
+            "44-trier_analyzer/26-rec3.c",
+            "44-trier_analyzer/27-rec4.c",
+            "44-trier_analyzer/28-rec5.c",
+            "44-trier_analyzer/29-rec6.c",
+            "44-trier_analyzer/30-rec7.c",
+            "44-trier_analyzer/31-rec8.c",
+            "44-trier_analyzer/32-rec9.c",
+            "44-trier_analyzer/33-recA.c",
+            "01-cpa/52-escaping-recursion.c",
+            "01-cpa/53-escaping-recursion-varEq.c",
+        ]
 
     # folder = regression_folder / "07-uninit"
     # for testFile in folder.iterdir():
@@ -157,8 +175,12 @@ def execute_validation_test(folder: Path, test_file: Path, task):
 
     subprocess.run(f"./goblint {args} --enable incremental.save {test_file}", shell=True, capture_output=True)
 
+    extra_args = ""
+    if isinstance(task, TaskRenameFunction) and task.use_recursive_detection_algorithm:
+        extra_args = "--sets incremental.detect-global-renamed-func recursive"
+
     command = subprocess.run(
-        f"./goblint {args} --enable incremental.load --set save_run {base}/{test_file}-incrementalrun {modified_file_result.tmp.name}",
+        f"./goblint {args} --enable incremental.load --set save_run {base}/{test_file}-incrementalrun {extra_args} {modified_file_result.tmp.name}",
         shell=True, text=True, capture_output=True)
 
     found_line = False
@@ -225,12 +247,14 @@ def rename_decl(node, new_name):
         if isinstance(node.type, PtrDecl):
             node.type.type.declname = new_name
 
+
 def visit_rest_of_func_def(self, node):
     self.visit(node.decl)
     if node.param_decls is not None:
         self.visit(node.param_decls)
 
     self.visit(node.body)
+
 
 class VarDeclVisitor(c_ast.NodeVisitor):
 
@@ -305,7 +329,6 @@ class IntroduceSemanticChangeVisitor(c_ast.NodeVisitor):
                 else:
                     node.name = known_var.name
 
-
     def visit_FuncDef(self, node):
         self.in_fun = True
         self.fun_name = node.decl.name
@@ -333,7 +356,6 @@ class FindFunctionToRenameVisitor(c_ast.NodeVisitor):
         self.fun_name = None
         self.updated_fun_name = None
 
-
     def visit_FuncDef(self, node):
         fun_name = node.decl.name
         if fun_name != "main" and self.fun_name is None:
@@ -354,7 +376,6 @@ class RenameFunctionVisitor(c_ast.NodeVisitor):
             node.decl.type.type.declname = self.updated_name
 
         visit_rest_of_func_def(self, node)
-
 
     def visit_ID(self, node):
         if node.name == self.function_to_rename_name:
@@ -439,8 +460,7 @@ class TaskRenameLocals:
 
 @dataclasses.dataclass
 class TaskRenameFunction:
-    def __init__(self):
-        self
+    use_recursive_detection_algorithm: bool
 
 
 if __name__ == '__main__':

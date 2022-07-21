@@ -62,25 +62,25 @@ let compareCilFiles ?(eq=eq_glob) (oldAST: file) (newAST: file) =
   let oldMap = Cil.foldGlobals oldAST addGlobal GlobalMap.empty in
 
   if GobConfig.get_bool "incremental.detect-renames" then (
-    let renameDetectionResults = DetectRenamedFunctionsRecursive.detectRenamedFunctions oldAST newAST in
+    let detectionFun = if GobConfig.get_string "incremental.detect-global-renamed-func" = "simple" then DetectRenamedFunctions.detectRenamedFunctions else DetectRenamedFunctionsRecursive.detectRenamedFunctions in
 
-    let f s = Printf.printf in
+    let renameDetectionResults = detectionFun oldAST newAST in
 
-    if Messages.tracing || true then
+    if Messages.tracing then
 
       GlobalElemMap.to_seq renameDetectionResults |>
       Seq.iter
         (fun (gT, (functionGlobal, status)) ->
-           f "compareCIL" "Function status of %s is=" (globalElemName gT);
+           Messages.trace "compareCIL" "Function status of %s is=" (globalElemName gT);
            match status with
-           | Unchanged _ ->  f "compareCIL" "Same Name\n";
-           | Added ->  f "compareCIL" "Added\n";
-           | Removed ->  f "compareCIL" "Removed\n";
-           | Changed _ ->  f "compareCIL" "Changed\n";
+           | Unchanged _ ->  Messages.trace "compareCIL" "Same Name\n";
+           | Added ->  Messages.trace "compareCIL" "Added\n";
+           | Removed ->  Messages.trace "compareCIL" "Removed\n";
+           | Changed _ ->  Messages.trace "compareCIL" "Changed\n";
            | UnchangedButRenamed toFrom ->
              match toFrom with
              | GFun (f, _) -> Printf.printf "Renamed to %s\n" f.svar.vname;
-             | GVar(v, _, _) ->  f "compareCIL" "Renamed to %s\n" v.vname;
+             | GVar(v, _, _) ->  Messages.trace "compareCIL" "Renamed to %s\n" v.vname;
              | _ -> ();
         );
 
