@@ -966,6 +966,14 @@
           "enum": ["ast", "cfg"],
           "default": "ast"
         },
+        "detect-global-renamed-func": {
+          "title": "incremental.detect-global-renamed-func",
+          "description":
+            "Which method for finding renamed global variables should be used?",
+          "type": "string",
+          "enum": ["simple", "recursive"],
+          "default": "simple"
+        },
         "detect-local-renames": {
           "title": "incremental.detect-local-renames",
           "description": "If Goblint should try to detect renamed local variables and function parameters",

@@ -62,7 +62,9 @@ let compareCilFiles ?(eq=eq_glob) (oldAST: file) (newAST: file) =
   let oldMap = Cil.foldGlobals oldAST addGlobal GlobalMap.empty in
 
   if GobConfig.get_bool "incremental.detect-global-renames" then (
-    let renameDetectionResults = detectRenamedFunctions oldAST newAST in
+    let detectionFun = if GobConfig.get_string "incremental.detect-global-renamed-func" = "simple" then DetectRenamedFunctions.detectRenamedFunctions else DetectRenamedFunctionsRecursive.detectRenamedFunctions in
+
+    let renameDetectionResults = detectionFun oldAST newAST in
 
     if Messages.tracing then
       GlobalElemMap.to_seq renameDetectionResults |>
