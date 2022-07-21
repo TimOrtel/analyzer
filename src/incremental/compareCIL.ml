@@ -47,7 +47,7 @@ let compareCilFiles ?(eq=eq_glob) (oldAST: file) (newAST: file) =
         | _ -> false
       in
 
-      if not skipFindChanges || not (GobConfig.get_bool "incremental.detect-renames") then
+      if not skipFindChanges || not (GobConfig.get_bool "incremental.detect-global-renames") then
         let ident = identifier_of_global global in
         let old_global = GlobalMap.find ident map in
         (* Do a (recursive) equal comparison ignoring location information *)
@@ -61,7 +61,7 @@ let compareCilFiles ?(eq=eq_glob) (oldAST: file) (newAST: file) =
   (* Store a map from functionNames in the old file to the function definition*)
   let oldMap = Cil.foldGlobals oldAST addGlobal GlobalMap.empty in
 
-  if GobConfig.get_bool "incremental.detect-renames" then (
+  if GobConfig.get_bool "incremental.detect-global-renames" then (
     let renameDetectionResults = detectRenamedFunctions oldAST newAST in
 
     if Messages.tracing then

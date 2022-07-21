@@ -1,5 +1,9 @@
 {
   "ana": {
+    "activated": [
+      "base",
+      "mallocWrapper"
+    ],
     "base": {
       "privatization": "none",
       "context": {
@@ -23,9 +27,6 @@
   },
   "exp": {
     "earlyglobs": true
-  },
-  "dbg": {
-    "print_dead_code": true
   },
   "printstats": true,
   "warn": {

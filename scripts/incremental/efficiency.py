@@ -33,7 +33,7 @@ begin         = datetime(2020,8,1)
 to            = datetime(2021,8,2) # minimal subset: datetime(2021,8,4)
 diff_exclude  = ["build", "doc", "examples", "tests", "zlibWrapper", "contrib"]
 analyzer_dir  = sys.argv[1]
-only_collect_results = False # can be turned on to collect results, if data collection was aborted before the creation of result tables
+only_collect_results = True # can be turned on to collect results, if data collection was aborted before the creation of result tables
 ################################################################################
 try:
     numcores = int(sys.argv[2])
@@ -91,30 +91,30 @@ def analyze_small_commits_in_repo(cwd, outdir, from_c, to_c):
         utils.reset_incremental_data(os.path.join(cwd, 'incremental_data'))
         failed = True
         try:
-            try:
-                #print('Starting from parent', str(parent.hash), ".")
-                outparent = os.path.join(outtry, 'parent')
-                os.makedirs(outparent)
-                add_options = ['--disable', 'incremental.load', '--enable', 'incremental.save']
-                utils.analyze_commit(analyzer_dir, gr, repo_path, build_compdb, parent.hash, outparent, conf_base, add_options)
-            except subprocess.CalledProcessError as e:
-                print("Ignore fail")
+            #print('Starting from parent', str(parent.hash), ".")
+            outparent = os.path.join(outtry, 'parent')
+            os.makedirs(outparent)
+            add_options = ['--disable', 'incremental.load', '--enable', 'incremental.save']
+            utils.analyze_commit(analyzer_dir, gr, repo_path, build_compdb, parent.hash, outparent, conf_base, add_options)
 
-            try:
-                #print('And now analyze', str(commit.hash), 'incrementally.')
-                outchild = os.path.join(outtry, 'child')
-                os.makedirs(outchild)
-                add_options = ['--enable', 'incremental.load', '--disable', 'incremental.save']
-                utils.analyze_commit(analyzer_dir, gr, repo_path, build_compdb, commit.hash, outchild, conf_base, add_options)
-            except subprocess.CalledProcessError as e:
-                print("Ignore fail2")
+            #print('And now analyze', str(commit.hash), 'incrementally.')
+            outchild = os.path.join(outtry, 'everything-enabled')
+            os.makedirs(outchild)
+            add_options = ['--enable', 'incremental.load', '--disable', 'incremental.save', '--enable', 'incremental.detect-local-renames', '--enable', 'incremental.detect-global-renames']
+            utils.analyze_commit(analyzer_dir, gr, repo_path, build_compdb, commit.hash, outchild, conf_base, add_options)
+
+
+            outchild = os.path.join(outtry, 'local-enabled')
+            os.makedirs(outchild)
+            add_options = ['--enable', 'incremental.load', '--disable', 'incremental.save', '--enable', 'incremental.detect-local-renames', '--disable', 'incremental.detect-global-renames']
+            utils.analyze_commit(analyzer_dir, gr, repo_path, build_compdb, commit.hash, outchild, conf_base, add_options)
 
 
             #print('And again incremental, this time with incremental postsolver')
-            # outchildincrpost = os.path.join(outtry, 'child-incr-post')
-            # os.makedirs(outchildincrpost)
-            # add_options = ['--enable', 'incremental.load', '--disable', 'incremental.save']
-            # utils.analyze_commit(analyzer_dir, gr, repo_path, build_compdb, commit.hash, outchildincrpost, conf_incrpost, add_options)
+            outchildincrpost = os.path.join(outtry, 'everything-disabled')
+            os.makedirs(outchildincrpost)
+            add_options = ['--enable', 'incremental.load', '--disable', 'incremental.save', '--disable', 'incremental.detect-local-renames', '--disable', 'incremental.detect-global-renames']
+            utils.analyze_commit(analyzer_dir, gr, repo_path, build_compdb, commit.hash, outchildincrpost, conf_base, add_options)
 
             #print('And again incremental, this time with incremental postsolver and reluctant')
             # outchildrel = os.path.join(outtry, 'child-rel')
@@ -144,15 +144,29 @@ def analyze_small_commits_in_repo(cwd, outdir, from_c, to_c):
     print("Skipped: ", count_skipped)
 
 def collect_data(outdir):
-    data = {"Commit": [], "Failed?": [], "Changed LOC": [], "Relevant changed LOC": [], "Changed/Added/Removed functions": [],
-      utils.header_runtime_parent: [], utils.header_runtime_incr_child: [],
-      utils.header_runtime_incr_posts_child: [], utils.header_runtime_incr_posts_rel_child: [],
-      "Change in number of race warnings": []}
+    data = {"Commit": [],
+            "Failed?": [],
+            "Changed LOC": [],
+            "Relevant changed LOC": [],
+            "Everything enabled - Changed functions": [],
+            "Everything enabled - Added functions": [],
+            "Everything enabled - Removed functions": [],
+            "Locals enabled - Changed functions": [],
+            "Locals enabled - Added functions": [],
+            "Locals enabled - Removed functions": [],
+            "Everything disabled - Changed functions": [],
+            "Everything disabled - Added functions": [],
+            "Everything disabled - Removed functions": [],
+            utils.header_runtime_parent: [],
+            utils.header_runtime_everything_disabled: [],
+            utils.header_runtime_locals_enabled: [],
+            utils.header_runtime_everything_enabled: []
+            }
     for t in os.listdir(outdir):
         parentlog = os.path.join(outdir, t, 'parent', utils.analyzerlog)
-        childlog = os.path.join(outdir, t, 'child', utils.analyzerlog)
-        childpostslog = os.path.join(outdir, t, 'child-incr-post', utils.analyzerlog)
-        childpostsrellog = os.path.join(outdir, t, 'child-rel', utils.analyzerlog)
+        everything_enabled = os.path.join(outdir, t, 'everything-enabled', utils.analyzerlog)
+        local_enabled = os.path.join(outdir, t, 'local-enabled', utils.analyzerlog)
+        everything_disabled = os.path.join(outdir, t, 'everything-disabled', utils.analyzerlog)
         commit_prop_log = os.path.join(outdir, t, 'commit_properties.log')
         t = int(t)
         commit_prop = json.load(open(commit_prop_log, "r"))
@@ -162,22 +176,36 @@ def collect_data(outdir):
         data["Commit"].append(commit_prop["hash"][:7])
         if commit_prop["failed"] == True:
             data[utils.header_runtime_parent].append(0)
-            data[utils.header_runtime_incr_child].append(0)
-            data[utils.header_runtime_incr_posts_child].append(0)
-            data[utils.header_runtime_incr_posts_rel_child].append(0)
-            data["Changed/Added/Removed functions"].append(0)
-            data["Change in number of race warnings"].append(0)
+            data[utils.header_runtime_everything_disabled].append(0)
+            data[utils.header_runtime_locals_enabled].append(0)
+            data[utils.header_runtime_everything_enabled].append(0)
+            data["Everything enabled - Changed functions"].append(0)
+            data["Everything enabled - Added functions"].append(0)
+            data["Everything enabled - Removed functions"].append(0)
+            data["Locals enabled - Changed functions"].append(0)
+            data["Locals enabled - Added functions"].append(0)
+            data["Locals enabled - Removed functions"].append(0)
+            data["Everything disabled - Changed functions"].append(0)
+            data["Everything disabled - Added functions"].append(0)
+            data["Everything disabled - Removed functions"].append(0)
             continue
         parent_info = utils.extract_from_analyzer_log(parentlog)
-        child_info = utils.extract_from_analyzer_log(childlog)
-        child_posts_info = utils.extract_from_analyzer_log(childpostslog)
-        child_posts_rel_info = utils.extract_from_analyzer_log(childpostsrellog)
-        data["Changed/Added/Removed functions"].append(int(child_info["changed"]) + int(child_info["added"]) + int(child_info["removed"]))
+        everything_enabled_info = utils.extract_from_analyzer_log(everything_enabled)
+        local_enabled_info = utils.extract_from_analyzer_log(local_enabled)
+        everything_disabled_info = utils.extract_from_analyzer_log(everything_disabled)
+        data["Everything enabled - Changed functions"].append(int(everything_enabled_info["changed"]))
+        data["Everything enabled - Added functions"].append(int(everything_enabled_info["added"]))
+        data["Everything enabled - Removed functions"].append(int(everything_enabled_info["removed"]))
+        data["Locals enabled - Changed functions"].append(int(local_enabled_info["changed"]))
+        data["Locals enabled - Added functions"].append(int(local_enabled_info["added"]))
+        data["Locals enabled - Removed functions"].append(int(local_enabled_info["removed"]))
+        data["Everything disabled - Changed functions"].append(int(everything_disabled_info["changed"]))
+        data["Everything disabled - Added functions"].append(int(everything_disabled_info["added"]))
+        data["Everything disabled - Removed functions"].append(int(everything_disabled_info["removed"]))
         data[utils.header_runtime_parent].append(float(parent_info["runtime"]))
-        data[utils.header_runtime_incr_child].append(float(child_info["runtime"]))
-        data[utils.header_runtime_incr_posts_child].append(float(child_posts_info["runtime"]))
-        data[utils.header_runtime_incr_posts_rel_child].append(float(child_posts_rel_info["runtime"]))
-        data["Change in number of race warnings"].append(int(child_info["race_warnings"] - int(parent_info["race_warnings"])))
+        data[utils.header_runtime_everything_enabled].append(float(everything_enabled_info["runtime"]))
+        data[utils.header_runtime_locals_enabled].append(float(local_enabled_info["runtime"]))
+        data[utils.header_runtime_everything_disabled].append(float(everything_disabled_info["runtime"]))
     return data
 
 def runperprocess(core, from_c, to_c):

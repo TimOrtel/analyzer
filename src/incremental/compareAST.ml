@@ -24,7 +24,7 @@ let emptyRenameMapping: rename_mapping = (StringMap.empty, VarinfoMap.empty, Var
   1. there is a rename for name1 -> name2 = rename(name1)
   2. there is no rename for name1 -> name1 = name2*)
 let rename_mapping_aware_name_comparison (name1: string) (name2: string) (rename_mapping: rename_mapping) =
-  if GobConfig.get_bool "incremental.detect-renames" then (
+  if GobConfig.get_bool "incremental.detect-local-renames" then (
     let (local_c, method_c, _, _) = rename_mapping in
     let existingAssumption: string option = StringMap.find_opt name1 local_c in
 

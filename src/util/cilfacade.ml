@@ -322,7 +322,9 @@ let rec get_ikind t =
   | TInt (ik,_)
   | TEnum ({ekind = ik; _},_) -> ik
   | TPtr _ -> get_ikind !Cil.upointType
-  | _ -> invalid_arg ("Cilfacade.get_ikind: non-integer type " ^ CilType.Typ.show t)
+  | _ ->
+    Messages.warn "Something that we expected to be an integer type has a different type, assuming it is an IInt";
+    Cil.IInt
 
 let ptrdiff_ikind () = get_ikind !ptrdiffType
 

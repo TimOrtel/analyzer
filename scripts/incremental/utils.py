@@ -28,9 +28,10 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
 
 header_runtime_parent = "Runtime for parent commit (non-incremental)"
-header_runtime_incr_child = "Runtime for commit (incremental)"
-header_runtime_incr_posts_child = "Runtime for commit (incremental + incr postsolver)"
-header_runtime_incr_posts_rel_child = "Runtime for commit (incremental + incr postsolver + reluctant)"
+header_runtime_everything_disabled = "Runtime for commit (incremental + everything disabled)"
+header_runtime_locals_enabled = "Runtime for commit (incremental + locals enabled)"
+header_runtime_everything_enabled = "Runtime for commit (incremental + everything enabled)"
+
 
 preparelog = "prepare.log"
 analyzerlog = "analyzer.log"

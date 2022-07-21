@@ -14,6 +14,10 @@ let globalElemName elem = match elem with
   | Fundec(f) -> f.svar.vname
   | GlobalVar(v) -> v.vname
 
+let globalElemName2 elem = match elem with
+| Fundec(f) -> "Fundec(" ^ f.svar.vname ^ ")"
+| GlobalVar(v) -> "GlobalVar(" ^ v.vname ^ ")"
+
 module GlobalElemForMap = struct
   type t = globalElem
 
@@ -238,6 +242,22 @@ let detectRenamedFunctions (oldAST: file) (newAST: file) : output GlobalElemMap.
 
   (*Go through all functions, for all that have not been renamed *)
   let finalData =
+    StringMap.fold (fun _ (v, _, _) (data: carryType) ->
+      let matchingNowGvar = StringMap.find_opt v.vname nowGVarMap in
+      match matchingNowGvar with
+        | Some (nowGvar, _, _) -> (
+          let identical, _ = eq_varinfo v nowGvar emptyRenameMapping in
+
+          let oldG, nowG = GlobalVar v, GlobalVar nowGvar in
+
+          if identical then
+            registerBiStatus (GlobalVar v) (GlobalVar nowGvar) (SameName (GlobalVar nowGvar)) data
+          else
+            registerStatusForOldF oldG (Modified(nowG, false)) data |>
+            registerStatusForNowF nowG (Modified(oldG, false))
+        )
+        | None -> data
+      ) oldGVarMap initialData |>
     StringMap.fold (fun _ (f, _) (data: carryType) ->
         let matchingNewFundec = StringMap.find_opt f.svar.vname nowFunctionMap in
         match matchingNewFundec with
@@ -251,10 +271,10 @@ let detectRenamedFunctions (oldAST: file) (newAST: file) : output GlobalElemMap.
             was a success or not. This call mimics this behaviour.*)
           let _ = performRenames renamesOnSuccess in
 
-          let _ = Pretty.printf "%s <-> %s: %b %s\n" f.svar.vname newFun.svar.vname doMatch (rename_mapping_to_string (StringMap.empty, function_dependencies, global_var_dependencies, ([], []))) in
+          (*let _ = Pretty.printf "%s <-> %s: %b %s\n" f.svar.vname newFun.svar.vname doMatch (rename_mapping_to_string (StringMap.empty, function_dependencies, global_var_dependencies, ([], []))) in
 
           let _ = Pretty.printf "old locals: %s\n" (String.concat ", " (List.map (fun x -> x.vname) f.slocals)) in
-          let _ = Pretty.printf "now locals: %s\n" (String.concat ", " (List.map (fun x -> x.vname) newFun.slocals)) in
+          let _ = Pretty.printf "now locals: %s\n" (String.concat ", " (List.map (fun x -> x.vname) newFun.slocals)) in*)
 
 
           let actDependencies = getDependencies function_dependencies in
@@ -274,7 +294,7 @@ let detectRenamedFunctions (oldAST: file) (newAST: file) : output GlobalElemMap.
             registerStatusForOldF oldG (Modified(nowG, unchangedHeader)) data |>
             registerStatusForNowF nowG (Modified(oldG, unchangedHeader))
         | None -> data
-      ) oldFunctionMap initialData |>
+      ) oldFunctionMap |>
     (*At this point we already know of the functions that have changed and stayed the same. We now assign the correct status to all the functions that
        have been mapped. The functions that have not been mapped are added/removed.*)
     (*Now go through all old functions again. Those who have not been assigned a status are removed*)
