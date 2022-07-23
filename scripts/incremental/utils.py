@@ -31,6 +31,7 @@ header_runtime_parent = "Runtime for parent commit (non-incremental)"
 header_runtime_everything_disabled = "Runtime for commit (incremental + everything disabled)"
 header_runtime_locals_enabled = "Runtime for commit (incremental + locals enabled)"
 header_runtime_everything_enabled = "Runtime for commit (incremental + everything enabled)"
+header_runtime_everything_enabled_rec = "Runtime for commit (incremental + everything enabled recursive)"
 
 
 preparelog = "prepare.log"

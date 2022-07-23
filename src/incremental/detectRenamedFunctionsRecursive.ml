@@ -285,7 +285,7 @@ let rec resolveDependencies (oldFunctionMap: f StringMap.t) (nowFunctionMap: f S
                 false, [], []
             in
             doMatch, hasIllegalDependency, cyclicDependencyDetected, infectedAssumptions, dependencyList
-          | None -> false, false, false, [], []
+          | None -> true, false, false, [], []
         )
       | GlobalVar oV -> (
           match (StringMap.find_opt nowName nowGVarMap) with
@@ -295,7 +295,7 @@ let rec resolveDependencies (oldFunctionMap: f StringMap.t) (nowFunctionMap: f S
 
               equal, false, false, [], []
             )
-          | None -> false, false, false, [], []
+          | None -> true, false, false, [], []
         )
     in
 

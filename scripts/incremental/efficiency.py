@@ -23,17 +23,17 @@ if len(sys.argv) != 3:
       print("Wrong number of parameters.\nUse script like this: python3 parallel_benchmarking.py <path to goblint directory> <number of processes>")
       exit()
 result_dir    = os.path.join(os.getcwd(), 'result_efficiency')
-maxCLOC       = 50 # can be deactivated with None
-url           = "https://github.com/mlichvar/chrony"
+maxCLOC       = 500 # can be deactivated with None
+url           = "https://github.com/TimOrtel/chrony"
 repo_name     = "chrony"
 build_compdb  = "build_compdb_chrony.sh"
 conf_base     = "minimal_incremental" # very minimal: "zstd-minimal"
 conf_incrpost = "zstd-race-incrpostsolver"
-begin         = datetime(2020,8,1)
-to            = datetime(2021,8,2) # minimal subset: datetime(2021,8,4)
+begin         = datetime(2022,7,22)
+to            = datetime(2022,7,24) # minimal subset: datetime(2021,8,4)
 diff_exclude  = ["build", "doc", "examples", "tests", "zlibWrapper", "contrib"]
 analyzer_dir  = sys.argv[1]
-only_collect_results = True # can be turned on to collect results, if data collection was aborted before the creation of result tables
+only_collect_results = False # can be turned on to collect results, if data collection was aborted before the creation of result tables
 ################################################################################
 try:
     numcores = int(sys.argv[2])
@@ -116,6 +116,14 @@ def analyze_small_commits_in_repo(cwd, outdir, from_c, to_c):
             add_options = ['--enable', 'incremental.load', '--disable', 'incremental.save', '--disable', 'incremental.detect-local-renames', '--disable', 'incremental.detect-global-renames']
             utils.analyze_commit(analyzer_dir, gr, repo_path, build_compdb, commit.hash, outchildincrpost, conf_base, add_options)
 
+            outchild = os.path.join(outtry, 'everything-enabled-rec')
+            os.makedirs(outchild)
+            add_options = ['--enable', 'incremental.load', '--disable', 'incremental.save', '--enable',
+                           'incremental.detect-local-renames', '--disable', 'incremental.detect-global-renames',
+                           '--sets', 'incremental.detect-global-renamed-func', 'recursive']
+            utils.analyze_commit(analyzer_dir, gr, repo_path, build_compdb, commit.hash, outchild, conf_base,
+                                 add_options)
+
             #print('And again incremental, this time with incremental postsolver and reluctant')
             # outchildrel = os.path.join(outtry, 'child-rel')
             # os.makedirs(outchildrel)
@@ -126,11 +134,6 @@ def analyze_small_commits_in_repo(cwd, outdir, from_c, to_c):
             failed = False
         except subprocess.CalledProcessError as e:
             print('Aborted because command ', e.cmd, 'failed.')
-            print(e.output)
-            print("STDOUT:")
-            print(e.stdout)
-            print("STDERR:")
-            print(e.stderr)
             count_failed+=1
         os.makedirs(outtry, exist_ok=True)
         with open(os.path.join(outtry,'commit_properties.log'), "w+") as file:
@@ -151,6 +154,9 @@ def collect_data(outdir):
             "Everything enabled - Changed functions": [],
             "Everything enabled - Added functions": [],
             "Everything enabled - Removed functions": [],
+            "Everything enabled rec - Changed functions": [],
+            "Everything enabled rec - Added functions": [],
+            "Everything enabled rec - Removed functions": [],
             "Locals enabled - Changed functions": [],
             "Locals enabled - Added functions": [],
             "Locals enabled - Removed functions": [],
@@ -160,11 +166,13 @@ def collect_data(outdir):
             utils.header_runtime_parent: [],
             utils.header_runtime_everything_disabled: [],
             utils.header_runtime_locals_enabled: [],
-            utils.header_runtime_everything_enabled: []
+            utils.header_runtime_everything_enabled: [],
+            utils.header_runtime_everything_enabled_rec: []
             }
     for t in os.listdir(outdir):
         parentlog = os.path.join(outdir, t, 'parent', utils.analyzerlog)
         everything_enabled = os.path.join(outdir, t, 'everything-enabled', utils.analyzerlog)
+        everything_enabled_rec = os.path.join(outdir, t, 'everything-enabled-rec', utils.analyzerlog)
         local_enabled = os.path.join(outdir, t, 'local-enabled', utils.analyzerlog)
         everything_disabled = os.path.join(outdir, t, 'everything-disabled', utils.analyzerlog)
         commit_prop_log = os.path.join(outdir, t, 'commit_properties.log')
@@ -179,9 +187,13 @@ def collect_data(outdir):
             data[utils.header_runtime_everything_disabled].append(0)
             data[utils.header_runtime_locals_enabled].append(0)
             data[utils.header_runtime_everything_enabled].append(0)
+            data[utils.header_runtime_everything_enabled_rec].append(0)
             data["Everything enabled - Changed functions"].append(0)
             data["Everything enabled - Added functions"].append(0)
             data["Everything enabled - Removed functions"].append(0)
+            data["Everything enabled rec - Changed functions"].append(0)
+            data["Everything enabled rec - Added functions"].append(0)
+            data["Everything enabled rec - Removed functions"].append(0)
             data["Locals enabled - Changed functions"].append(0)
             data["Locals enabled - Added functions"].append(0)
             data["Locals enabled - Removed functions"].append(0)
@@ -191,11 +203,15 @@ def collect_data(outdir):
             continue
         parent_info = utils.extract_from_analyzer_log(parentlog)
         everything_enabled_info = utils.extract_from_analyzer_log(everything_enabled)
+        everything_enabled_rec_info = utils.extract_from_analyzer_log(everything_enabled_rec)
         local_enabled_info = utils.extract_from_analyzer_log(local_enabled)
         everything_disabled_info = utils.extract_from_analyzer_log(everything_disabled)
         data["Everything enabled - Changed functions"].append(int(everything_enabled_info["changed"]))
         data["Everything enabled - Added functions"].append(int(everything_enabled_info["added"]))
         data["Everything enabled - Removed functions"].append(int(everything_enabled_info["removed"]))
+        data["Everything enabled rec - Changed functions"].append(int(everything_enabled_rec_info["changed"]))
+        data["Everything enabled rec - Added functions"].append(int(everything_enabled_rec_info["added"]))
+        data["Everything enabled rec - Removed functions"].append(int(everything_enabled_rec_info["removed"]))
         data["Locals enabled - Changed functions"].append(int(local_enabled_info["changed"]))
         data["Locals enabled - Added functions"].append(int(local_enabled_info["added"]))
         data["Locals enabled - Removed functions"].append(int(local_enabled_info["removed"]))
@@ -206,6 +222,8 @@ def collect_data(outdir):
         data[utils.header_runtime_everything_enabled].append(float(everything_enabled_info["runtime"]))
         data[utils.header_runtime_locals_enabled].append(float(local_enabled_info["runtime"]))
         data[utils.header_runtime_everything_disabled].append(float(everything_disabled_info["runtime"]))
+        data[utils.header_runtime_everything_enabled_rec].append(float(everything_enabled_rec_info["runtime"]))
+
     return data
 
 def runperprocess(core, from_c, to_c):

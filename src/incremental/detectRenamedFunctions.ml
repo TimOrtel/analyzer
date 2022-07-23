@@ -14,6 +14,10 @@ let globalElemName elem = match elem with
   | Fundec(f) -> f.svar.vname
   | GlobalVar(v) -> v.vname
 
+  let globalElemName2 elem = match elem with
+  | Fundec(f) -> "Fundec(" ^ f.svar.vname ^ ")"
+  | GlobalVar(v) -> "GlobalVar(" ^ v.vname ^ ")"
+
 module GlobalElemForMap = struct
   type t = globalElem
 
@@ -143,10 +147,13 @@ let doAllDependenciesMatch (dependencies: functionDependencies)
       let globalElem = getGlobal old in
       let knownMapping = GlobalElemMap.find_opt globalElem data.mapping in
 
+      (*let _ = Printf.printf "Dep: %s -> %s\n" (globalElemName2 globalElem) nowName in*)
+
       (*To avoid inconsitencies, if a function has already been mapped to a function, that mapping is reused again.*)
       match knownMapping with
       | Some(knownElem) ->
         (*This function has already been mapped*)
+        (*let _ = Printf.printf "Already mapped. %s = %s\n" (globalElemName2 knownElem) nowName in*)
         globalElemName knownElem = nowName, data
       | None ->
         let nowElemOption = getNowOption nowName in
@@ -168,11 +175,6 @@ let doAllDependenciesMatch (dependencies: functionDependencies)
 
             let doMatch, function_dependencies, global_var_dependencies, renamesOnSuccess = compare globalElem nowElem in
 
-            (*let _ = Printf.printf "%s <-> %s: %b %b %b\n" (getName old) (globalElemName nowElem) doMatch (StringMap.is_empty function_dependencies) (VarinfoMap.is_empty global_var_dependencies) in
-
-              let _ = Printf.printf "%s\n" (rename_mapping_to_string (StringMap.empty, function_dependencies, global_var_dependencies)) in
-            *)
-
             (*Having a dependency on yourself is ok.*)
             let hasNoExternalDependency = VarinfoMap.is_empty function_dependencies || (
                 VarinfoMap.cardinal function_dependencies = 1 && (
@@ -180,13 +182,19 @@ let doAllDependenciesMatch (dependencies: functionDependencies)
                 )
               ) in
 
+            (*let _ = Printf.printf "%s <-> %s: %b %b %b\n" (globalElemName2 globalElem) (globalElemName2 nowElem) doMatch hasNoExternalDependency (VarinfoMap.is_empty global_var_dependencies) in
+
+            let _ = Printf.printf "%s\n" (rename_mapping_to_string (StringMap.empty, function_dependencies, global_var_dependencies, ([], []))) in*)
+
             if doMatch && hasNoExternalDependency && areGlobalVarRenameAssumptionsEmpty global_var_dependencies then
               let _ = performRenames renamesOnSuccess in
               true, registerMapping globalElem nowElem data
             else false, data
           )
         | None ->
-          false, data
+          (*Printf.printf "No elem with name %s found \n" nowName;*)
+          (*Return true assumes external globs never change. Which is ok for now*)
+          true, data
     else false, data
   in
 
@@ -324,6 +332,12 @@ let detectRenamedFunctions (oldAST: file) (newAST: file) : output GlobalElemMap.
   let oldFunctionMap, oldGVarMap = getFunctionAndGVarMap oldAST in
   let nowFunctionMap, nowGVarMap = getFunctionAndGVarMap newAST in
 
+  (*let show x = [%show: (string * string) list] (StringMap.to_seq x |> Seq.map (fun (name, (v, _, _)) -> (name, v.vname)) |> List.of_seq) in
+
+  let _ = Printf.printf "oldGvarMap: %s" (show oldGVarMap) in
+  let _ = Printf.printf "nowGvarMap: %s" (show nowGVarMap) in*)
+
+
   let initialData: carryType = findSameNameMatchingGVars oldGVarMap nowGVarMap emptyCarryType in
 
   (*Go through all functions, for all that have not been renamed *)
@@ -331,8 +345,13 @@ let detectRenamedFunctions (oldAST: file) (newAST: file) : output GlobalElemMap.
       let oldG = Fundec(oldF) in
       let nowG = Fundec(nowF) in
 
+      (*let _ = Printf.printf "1. Same Name: %s <-> %s: %b, %b\n" oldF.svar.vname nowF.svar.vname doMatch unchangedHeader in*)
+
       if doMatch then
         let doDependenciesMatch, updatedData = doAllDependenciesMatch functionDependencies global_var_dependencies oldFunctionMap nowFunctionMap oldGVarMap nowGVarMap data in
+
+        (*let _ = Printf.printf "2. Same Name: %s <-> %s: %b\n" oldF.svar.vname nowF.svar.vname doDependenciesMatch in*)
+
         if doDependenciesMatch then
           registerBiStatus oldG nowG (SameName(oldG)) updatedData
         else
