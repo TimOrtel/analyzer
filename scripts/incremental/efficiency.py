@@ -29,8 +29,8 @@ repo_name     = "chrony"
 build_compdb  = "build_compdb_chrony.sh"
 conf_base     = "minimal_incremental" # very minimal: "zstd-minimal"
 conf_incrpost = "zstd-race-incrpostsolver"
-begin         = datetime(2022,7,22)
-to            = datetime(2022,7,24) # minimal subset: datetime(2021,8,4)
+begin         = datetime(2022,7,24)
+to            = datetime(2022,7,25) # minimal subset: datetime(2021,8,4)
 diff_exclude  = ["build", "doc", "examples", "tests", "zlibWrapper", "contrib"]
 analyzer_dir  = sys.argv[1]
 only_collect_results = False # can be turned on to collect results, if data collection was aborted before the creation of result tables
@@ -119,8 +119,8 @@ def analyze_small_commits_in_repo(cwd, outdir, from_c, to_c):
             outchild = os.path.join(outtry, 'everything-enabled-rec')
             os.makedirs(outchild)
             add_options = ['--enable', 'incremental.load', '--disable', 'incremental.save', '--enable',
-                           'incremental.detect-local-renames', '--disable', 'incremental.detect-global-renames',
-                           '--sets', 'incremental.detect-global-renamed-func', 'recursive']
+                           'incremental.detect-local-renames', '--enable', 'incremental.detect-global-renames',
+                           '--set', 'incremental.detect-global-renamed-func', 'recursive']
             utils.analyze_commit(analyzer_dir, gr, repo_path, build_compdb, commit.hash, outchild, conf_base,
                                  add_options)
 

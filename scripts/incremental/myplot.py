@@ -20,9 +20,9 @@ ed_af = "Everything disabled - Added functions"
 ed_rf = "Everything disabled - Removed functions"
 
 def main():
-    #results_file = Path("/home/tim/Code/analyzer_results/700/result_efficiency/total_results.csv")
+    results_file = Path("/home/tim/Code/analyzer_results/700/result_efficiency/total_results.csv")
     #results_file = Path("/home/tim/Code/analyzer_results/500/total_results.csv")
-    results_file = Path("/home/tim/Code/analyzer_results/combination.csv")
+    #results_file = Path("/home/tim/Code/analyzer_results/combination.csv")
     with open(results_file) as rf:
         reader = csv.DictReader(rf, delimiter=';')
         calc_runtime(reader)
@@ -85,29 +85,34 @@ def calc_runtime(reader):
     total_ee_runtime = 0
     total_ee_rec_runtime = 0
 
+    comparison_ed_runtime = 0
+    comparison_le_runtime = 0
+    comparison_ee_runtime = 0
+    comparison_ee_rec_runtime = 0
+
     for row in reader:
         if row["Failed?"] == "True":
             continue
 
-        runtime_ed = float(row[ed_runtime])
-        runtime_le = float(row[le_runtime])
+        total_runtime_ed = float(row[ed_runtime])
+        total_runtime_le = float(row[le_runtime])
         runtime_ee = float(row[ee_runtime])
         runtime_ee_rec = float(row[ee_rec_runtime])
 
-        total_ed_runtime += runtime_ed
-        total_le_runtime += runtime_le
+        total_ed_runtime += total_runtime_ed
+        total_le_runtime += total_runtime_le
         total_ee_runtime += runtime_ee
         total_ee_rec_runtime += runtime_ee_rec
 
         commit_count += 1
 
-        if runtime_ee < runtime_ed:
+        if runtime_ee < total_runtime_ed:
             ee_faster_than_ed += 1
 
-        if runtime_le < runtime_ed:
+        if total_runtime_le < total_runtime_ed:
             le_faster_than_ed += 1
 
-        if runtime_ee < runtime_le:
+        if runtime_ee < total_runtime_le:
             ee_faster_than_le += 1
 
     average_runtime_ed = total_ed_runtime / commit_count
@@ -117,7 +122,7 @@ def calc_runtime(reader):
 
     def calc_performance_increase(first, second):
         abs_performance_increase = first - second
-        relative_performance_increase = 1 - (second / first)
+        relative_performance_increase = ((first - second) / first)
         return abs_performance_increase, relative_performance_increase
 
     abs_pe_le_to_ed, rel_pe_le_to_ed = calc_performance_increase(average_runtime_ed, average_runtime_le)

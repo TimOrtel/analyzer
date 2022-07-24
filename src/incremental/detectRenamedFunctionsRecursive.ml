@@ -319,16 +319,22 @@ let fillStatusForValidAssumptions oldFunctionMap nowFunctionMap oldGVarMap nowGV
       let nowG = match old with
         | Fundec _ ->
           let (nF, _) = StringMap.find nowName nowFunctionMap in
-          Fundec nF
+          Option.some (Fundec nF)
         | GlobalVar _ ->
-          let (nF, _, _) = StringMap.find nowName nowGVarMap in
-          GlobalVar nF
+          if StringMap.mem nowName nowFunctionMap then
+            let (nF, _, _) = StringMap.find nowName nowGVarMap in
+            Option.some (GlobalVar nF)
+          else None
       in
 
-      if globalElemName old = nowName then
-        modifyBasicCarryData (registerBiStatus old nowG (SameName(nowG))) data
-      else
-        modifyBasicCarryData (registerMapping old nowG) data
+      match nowG with
+        | Some nowG -> (
+          if globalElemName old = nowName then
+            modifyBasicCarryData (registerBiStatus old nowG (SameName(nowG))) data
+          else
+            modifyBasicCarryData (registerMapping old nowG) data
+        )
+        | None -> data
     ) data.assumptions data
 
 let detectRenamedFunctions (oldAST: file) (newAST: file) : output GlobalElemMap.t =
@@ -357,7 +363,9 @@ let detectRenamedFunctions (oldAST: file) (newAST: file) : output GlobalElemMap.
           in
 
           let globVarRenameMappings =
-            VarinfoMap.to_seq global_var_dependencies |> List.of_seq |> List.map (fun (a, b) ->
+            VarinfoMap.to_seq global_var_dependencies |> List.of_seq |>
+            List.filter (fun (a, b) -> StringMap.mem a.vname oldGVarMap) |>
+            List.map (fun (a, b) ->
                 let (v, _, _) = StringMap.find a.vname oldGVarMap in
                 (GlobalVar v, b, true)
               )
