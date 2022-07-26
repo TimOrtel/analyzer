@@ -6,6 +6,11 @@ le_runtime = "Runtime for commit (incremental + locals enabled)"
 ee_runtime = "Runtime for commit (incremental + everything enabled)"
 ee_rec_runtime = "Runtime for commit (incremental + everything enabled recursive)"
 
+ed_comp_runtime = "Comparison runtime for commit (incremental + everything disabled)"
+le_comp_runtime = "Comparison runtime for commit (incremental + locals enabled)"
+ee_comp_runtime = "Comparison runtime for commit (incremental + everything enabled)"
+ee_comp_rec_runtime = "Comparison runtime for commit (incremental + everything enabled recursive)"
+
 ee_cf = "Everything enabled - Changed functions"
 ee_af = "Everything enabled - Added functions"
 ee_rf = "Everything enabled - Removed functions"
@@ -20,13 +25,21 @@ ed_af = "Everything disabled - Added functions"
 ed_rf = "Everything disabled - Removed functions"
 
 def main():
-    results_file = Path("/home/tim/Code/analyzer_results/700/result_efficiency/total_results.csv")
+    # results_file = Path("/home/tim/Code/analyzer_results/700/result_efficiency/total_results.csv")
     #results_file = Path("/home/tim/Code/analyzer_results/500/total_results.csv")
-    #results_file = Path("/home/tim/Code/analyzer_results/combination.csv")
+    #results_file = Path("/home/tim/Code/analyzer_results/v2/1200/result_efficiency/total_results.csv")
+    results_file = Path("/home/tim/Code/analyzer_results/v2/combination.csv")
+    #results_file = Path("result_efficiency/total_results.csv")
+
+    benefitted_commits = ['3a2d33d', '2c877fa', '9a4c22d', 'edda0c6', 'e56154a', '6199a89', 'd92583e', '3f85d1d',
+                          'a0a9560', '57957ab', '039b388', 'be14dbf', '8f6a1b5', '8db9d59', '43dc0b3', '99cc945',
+                          '8f6a1b5', '2f738d5']
+
     with open(results_file) as rf:
         reader = csv.DictReader(rf, delimiter=';')
-        calc_runtime(reader)
-        # calc_runtime(reader)
+        # calc_locals_unchanged_funs(reader)
+        calc_runtime(reader, ed_runtime, le_runtime, ee_runtime, ee_rec_runtime, benefitted_commits)
+        #calc_runtime(reader, ed_comp_runtime, le_comp_runtime, ee_comp_runtime, ee_comp_rec_runtime, benefitted_commits)
 
 def calc_considered(reader):
     total = 0
@@ -69,13 +82,16 @@ def calc_locals_unchanged_funs(reader):
         if changed_ee > changed_ed:
             print(f"Worse: {commit_}: {changed_ee}-{changed_ed}")
 
+        if changed_ee_rec < changed_ee:
+            print(f"Rec benefit: {commit_}: {changed_ee_rec}-{changed_ee}")
+
     print(f"Total rows benefited from local changes: {len(benefited_rows_le)}; {benefited_rows_le}")
     print(f"Total rows benefited from everything enabled: {len(benefited_rows_ee)}; {benefited_rows_ee}")
     print(f"Total rows benefited from everything enabled rec: {len(benefited_rows_ee_rec)}; {benefited_rows_ee_rec}")
     print(str(count))
 
 
-def calc_runtime(reader):
+def calc_runtime(reader, ed_runtime, le_runtime, ee_runtime, ee_rec_runtime, commits):
     le_faster_than_ed = 0
     ee_faster_than_ed = 0
     ee_faster_than_le = 0
@@ -85,13 +101,11 @@ def calc_runtime(reader):
     total_ee_runtime = 0
     total_ee_rec_runtime = 0
 
-    comparison_ed_runtime = 0
-    comparison_le_runtime = 0
-    comparison_ee_runtime = 0
-    comparison_ee_rec_runtime = 0
-
     for row in reader:
         if row["Failed?"] == "True":
+            continue
+
+        if not len(commits) == 0 and row["Commit"] not in commits:
             continue
 
         total_runtime_ed = float(row[ed_runtime])
@@ -139,6 +153,14 @@ def calc_runtime(reader):
     print_performance_increase(abs_pe_ee_to_ed, rel_pe_ee_to_ed, "Everything disabled", "Everything enabled")
     print_performance_increase(abs_pe_ee_rec_to_ed, rel_pe_ee_rec_to_ed, "Everything disabled", "Everything enabled rec")
     print_performance_increase(abs_pe_ee_to_le, rel_pe_ee_to_le, "Local enabled", "Everything enabled")
+
+    print(f"Acg runtime ed: {average_runtime_ed}")
+    print(f"Acg runtime le: {average_runtime_le}")
+    print(f"Acg runtime ee: {average_runtime_ee}")
+    print(f"Acg runtime ee_rec: {average_runtime_ee_rec}")
+
+    print(f"Commit count: {commit_count}")
+
 
 if __name__ == '__main__':
     main()

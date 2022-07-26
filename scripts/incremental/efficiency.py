@@ -24,13 +24,13 @@ if len(sys.argv) != 3:
       exit()
 result_dir    = os.path.join(os.getcwd(), 'result_efficiency')
 maxCLOC       = 500 # can be deactivated with None
-url           = "https://github.com/TimOrtel/chrony"
+url           = "https://github.com/mlichvar/chrony"
 repo_name     = "chrony"
 build_compdb  = "build_compdb_chrony.sh"
 conf_base     = "minimal_incremental" # very minimal: "zstd-minimal"
 conf_incrpost = "zstd-race-incrpostsolver"
-begin         = datetime(2022,7,24)
-to            = datetime(2022,7,25) # minimal subset: datetime(2021,8,4)
+begin         = datetime(2013,10, 7, 15, 49)
+to            = datetime(2013,10, 7, 15, 51) # minimal subset: datetime(2021,8,4)
 diff_exclude  = ["build", "doc", "examples", "tests", "zlibWrapper", "contrib"]
 analyzer_dir  = sys.argv[1]
 only_collect_results = False # can be turned on to collect results, if data collection was aborted before the creation of result tables
@@ -97,6 +97,16 @@ def analyze_small_commits_in_repo(cwd, outdir, from_c, to_c):
             add_options = ['--disable', 'incremental.load', '--enable', 'incremental.save']
             utils.analyze_commit(analyzer_dir, gr, repo_path, build_compdb, parent.hash, outparent, conf_base, add_options)
 
+            # print('And again incremental, this time with incremental postsolver')
+            outchildincrpost = os.path.join(outtry, 'everything-disabled')
+            os.makedirs(outchildincrpost)
+            add_options = ['--enable', 'incremental.load', '--disable', 'incremental.save', '--disable',
+                           'incremental.detect-local-renames', '--disable', 'incremental.detect-global-renames']
+            utils.analyze_commit(analyzer_dir, gr, repo_path, build_compdb, commit.hash, outchildincrpost, conf_base,
+                                 add_options)
+
+            print("Done")
+
             #print('And now analyze', str(commit.hash), 'incrementally.')
             outchild = os.path.join(outtry, 'everything-enabled')
             os.makedirs(outchild)
@@ -108,13 +118,6 @@ def analyze_small_commits_in_repo(cwd, outdir, from_c, to_c):
             os.makedirs(outchild)
             add_options = ['--enable', 'incremental.load', '--disable', 'incremental.save', '--enable', 'incremental.detect-local-renames', '--disable', 'incremental.detect-global-renames']
             utils.analyze_commit(analyzer_dir, gr, repo_path, build_compdb, commit.hash, outchild, conf_base, add_options)
-
-
-            #print('And again incremental, this time with incremental postsolver')
-            outchildincrpost = os.path.join(outtry, 'everything-disabled')
-            os.makedirs(outchildincrpost)
-            add_options = ['--enable', 'incremental.load', '--disable', 'incremental.save', '--disable', 'incremental.detect-local-renames', '--disable', 'incremental.detect-global-renames']
-            utils.analyze_commit(analyzer_dir, gr, repo_path, build_compdb, commit.hash, outchildincrpost, conf_base, add_options)
 
             outchild = os.path.join(outtry, 'everything-enabled-rec')
             os.makedirs(outchild)
@@ -167,7 +170,11 @@ def collect_data(outdir):
             utils.header_runtime_everything_disabled: [],
             utils.header_runtime_locals_enabled: [],
             utils.header_runtime_everything_enabled: [],
-            utils.header_runtime_everything_enabled_rec: []
+            utils.header_runtime_everything_enabled_rec: [],
+            utils.header_comp_runtime_everything_disabled: [],
+            utils.header_comp_runtime_locals_enabled: [],
+            utils.header_comp_runtime_everything_enabled: [],
+            utils.header_comp_runtime_everything_enabled_rec: []
             }
     for t in os.listdir(outdir):
         parentlog = os.path.join(outdir, t, 'parent', utils.analyzerlog)
@@ -176,7 +183,6 @@ def collect_data(outdir):
         local_enabled = os.path.join(outdir, t, 'local-enabled', utils.analyzerlog)
         everything_disabled = os.path.join(outdir, t, 'everything-disabled', utils.analyzerlog)
         commit_prop_log = os.path.join(outdir, t, 'commit_properties.log')
-        t = int(t)
         commit_prop = json.load(open(commit_prop_log, "r"))
         data["Changed LOC"].append(commit_prop["CLOC"])
         data["Relevant changed LOC"].append(commit_prop["relCLOC"])
@@ -188,6 +194,10 @@ def collect_data(outdir):
             data[utils.header_runtime_locals_enabled].append(0)
             data[utils.header_runtime_everything_enabled].append(0)
             data[utils.header_runtime_everything_enabled_rec].append(0)
+            data[utils.header_comp_runtime_everything_disabled].append(0)
+            data[utils.header_comp_runtime_locals_enabled].append(0)
+            data[utils.header_comp_runtime_everything_enabled].append(0)
+            data[utils.header_comp_runtime_everything_enabled_rec].append(0)
             data["Everything enabled - Changed functions"].append(0)
             data["Everything enabled - Added functions"].append(0)
             data["Everything enabled - Removed functions"].append(0)
@@ -200,6 +210,7 @@ def collect_data(outdir):
             data["Everything disabled - Changed functions"].append(0)
             data["Everything disabled - Added functions"].append(0)
             data["Everything disabled - Removed functions"].append(0)
+
             continue
         parent_info = utils.extract_from_analyzer_log(parentlog)
         everything_enabled_info = utils.extract_from_analyzer_log(everything_enabled)
@@ -223,6 +234,11 @@ def collect_data(outdir):
         data[utils.header_runtime_locals_enabled].append(float(local_enabled_info["runtime"]))
         data[utils.header_runtime_everything_disabled].append(float(everything_disabled_info["runtime"]))
         data[utils.header_runtime_everything_enabled_rec].append(float(everything_enabled_rec_info["runtime"]))
+
+        data[utils.header_comp_runtime_everything_enabled].append(float(everything_enabled_info["comp_runtime"]))
+        data[utils.header_comp_runtime_locals_enabled].append(float(local_enabled_info["comp_runtime"]))
+        data[utils.header_comp_runtime_everything_disabled].append(float(everything_disabled_info["comp_runtime"]))
+        data[utils.header_comp_runtime_everything_enabled_rec].append(float(everything_enabled_rec_info["comp_runtime"]))
 
     return data
 
