@@ -285,9 +285,12 @@ and eq_varinfo (a: varinfo) (b: varinfo) (rename_mapping: rename_mapping) : bool
           let is_naming_ok = method_rename_mapping.original_method_name = a.vname && method_rename_mapping.new_method_name = b.vname in
           is_naming_ok, method_rename_mappings, glob_vars
         | None ->
-          let assumption = {original_method_name = a.vname; new_method_name = b.vname} in
+          if a.vname <> b.vname then
+            let assumption =
+              {original_method_name = a.vname; new_method_name = b.vname} in
 
-          true, VarinfoMap.add a assumption method_rename_mappings, glob_vars
+            true, VarinfoMap.add a assumption method_rename_mappings, glob_vars
+          else true, method_rename_mappings, glob_vars
       )
     | TInt (_, _), TInt (_, _) -> compare_local_and_global_var
     | TFloat (_, _), TFloat (_, _) -> compare_local_and_global_var
@@ -298,7 +301,6 @@ and eq_varinfo (a: varinfo) (b: varinfo) (rename_mapping: rename_mapping) : bool
   (*If the following is a method call, we need to check if we have a mapping for that method call. *)
   let fun_parameter_name_comparison_enabled = match b.vtype with
     | TFun(_, _, _, _) -> false
-    (*I think we dont need this anymore.*)
     (*| GVar (_, _, _) -> (
         let new_local = VarinfoMap.find_opt a glob_vars in
 

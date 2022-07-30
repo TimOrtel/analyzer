@@ -175,27 +175,20 @@ let doAllDependenciesMatch (dependencies: functionDependencies)
 
             let doMatch, function_dependencies, global_var_dependencies, renamesOnSuccess = compare globalElem nowElem in
 
-            (*Having a dependency on yourself is ok*)
-            let hasNoIllegalDependency =
-                not (VarinfoMap.exists (fun varinfo dependency ->
-                  let one = varinfo.vname = globalElemName globalElem && dependency.new_method_name = globalElemName nowElem in
-                  let two = varinfo.vname = dependency.new_method_name in
+            (*Having a dependency on yourself is ok.*)
+            let hasNoExternalDependency = VarinfoMap.is_empty function_dependencies || (
+                VarinfoMap.cardinal function_dependencies = 1 && (
+                  VarinfoMap.fold (fun varinfo dependency _ -> varinfo.vname = globalElemName globalElem && dependency.new_method_name = globalElemName nowElem) function_dependencies true
+                )
+              ) in
 
-                  not one && not two
-                  ) function_dependencies)
-               in
+            (*let _ = Printf.printf "%s <-> %s: %b %b %b\n" (globalElemName2 globalElem) (globalElemName2 nowElem) doMatch hasNoExternalDependency (VarinfoMap.is_empty global_var_dependencies) in
 
-            (*let _ = Printf.printf "%s <-> %s: %b %b %b\n" (globalElemName2 globalElem) (globalElemName2 nowElem) doMatch hasNoExternalDependency (VarinfoMap.is_empty global_var_dependencies) in *)
+            let _ = Printf.printf "%s\n" (rename_mapping_to_string (StringMap.empty, function_dependencies, global_var_dependencies, ([], []))) in*)
 
-            let _ = Printf.printf "%s\n" (rename_mapping_to_string (StringMap.empty, function_dependencies, global_var_dependencies, ([], []))) in
-
-            if doMatch && hasNoIllegalDependency && areGlobalVarRenameAssumptionsEmpty global_var_dependencies then
+            if doMatch && hasNoExternalDependency && areGlobalVarRenameAssumptionsEmpty global_var_dependencies then
               let _ = performRenames renamesOnSuccess in
-              true, registerMapping globalElem nowElem data |> VarinfoMap.fold (fun v d data ->
-                  match (StringMap.find_opt v.vname oldFunctionMap, StringMap.find_opt d.new_method_name nowFunctionMap) with
-                    | Some (f, _), Some (f2, _) -> registerMapping (Fundec f) (Fundec f2) data
-                    | _, _ -> data
-                ) function_dependencies
+              true, registerMapping globalElem nowElem data
             else false, data
           )
         | None ->
