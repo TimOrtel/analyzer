@@ -12,6 +12,8 @@ import sys
 import pandas as pd
 from pathlib import Path
 
+specific_commits = ["ae4670466c5db56493f356c1a81e8cbefef3271e"]
+
 ################################################################################
 # Usage: python3 incremental_smallcommits.py <full_path_analyzer_dir> <number_of_cores>
 # Executing the script will overwrite the directory 'result_efficiency' in the cwd.
@@ -23,14 +25,14 @@ if len(sys.argv) != 3:
       print("Wrong number of parameters.\nUse script like this: python3 parallel_benchmarking.py <path to goblint directory> <number of processes>")
       exit()
 result_dir    = os.path.join(os.getcwd(), 'result_efficiency')
-maxCLOC       = 500 # can be deactivated with None
-url           = "https://github.com/mlichvar/chrony"
-repo_name     = "chrony"
-build_compdb  = "build_compdb_chrony.sh"
+maxCLOC       = 50 # can be deactivated with None
+url           = "https://github.com/facebook/zstd"
+repo_name     = "zstd"
+build_compdb  = "build_compdb_zstd.sh"
 conf_base     = "minimal_incremental" # very minimal: "zstd-minimal"
 conf_incrpost = "zstd-race-incrpostsolver"
-begin         = datetime(2013,10, 7, 15, 49)
-to            = datetime(2013,10, 7, 15, 51) # minimal subset: datetime(2021,8,4)
+begin         = datetime(2021,8,1)
+to            = datetime(2021,8,4) # minimal subset: datetime(2021,8,4)
 diff_exclude  = ["build", "doc", "examples", "tests", "zlibWrapper", "contrib"]
 analyzer_dir  = sys.argv[1]
 only_collect_results = False # can be turned on to collect results, if data collection was aborted before the creation of result tables
@@ -67,7 +69,7 @@ def analyze_small_commits_in_repo(cwd, outdir, from_c, to_c):
     analyzed_commits = {}
     repo_path = os.path.join(cwd, repo_name)
 
-    for commit in itertools.islice(itertools.filterfalse(filter_commits_false_pred(repo_path), Repository(url, since=begin, to=to, only_no_merge=True, clone_repo_to=cwd).traverse_commits()), from_c, to_c):
+    for commit in itertools.islice(itertools.filterfalse(filter_commits_false_pred(repo_path), Repository(url, only_commits=specific_commits, only_no_merge=True, clone_repo_to=cwd).traverse_commits()), from_c, to_c):
         gr = Git(repo_path)
 
         #print("\n" + commit.hash)
@@ -261,7 +263,7 @@ def analyze_chunks_of_commits_in_parallel():
     processes = []
 
     # calculate actual number of interesting commits up-front to allow for similar load distribution
-    iter = itertools.filterfalse(filter_commits_false_pred(os.path.join(os.getcwd(), repo_name)), Repository(url, since=begin, to=to, only_no_merge=True, clone_repo_to=os.getcwd()).traverse_commits())
+    iter = itertools.filterfalse(filter_commits_false_pred(os.path.join(os.getcwd(), repo_name)), Repository(url, only_commits=specific_commits, only_no_merge=True, clone_repo_to=os.getcwd()).traverse_commits())
     num_commits = sum(1 for _ in iter)
     print("Number of potentially interesting commits:", num_commits)
     perprocess = num_commits // numcores if num_commits % numcores == 0 else num_commits // numcores + 1
