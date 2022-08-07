@@ -195,8 +195,14 @@ let rec propagateWrongRenameAssumption (oldFunctionMap: f StringMap.t) (nowFunct
 let hasCyclicDependency (parent: fundec * string) (dependencyList: (fundec * string) list) (data: extendedCarryType) : bool * (fundec * string) list =
   let isAssumptionInList (assumption: fundec * string) (list: (fundec * string) list) : bool =
     let (av, an) = assumption in
-    List.exists (fun (v, n) -> v = av && n = an) list
+    List.exists (fun (v, n) -> v.svar.vname = av.svar.vname && n = an) list
   in
+
+  (*let (pf, pn) = parent in
+
+  Printf.printf "cyclic: \n";
+  Printf.printf "parent: %s -> %s\n" pf.svar.vname pn;
+  Printf.printf "dependencies %s\n" (String.concat "," (List.map (fun (a, b) -> a.svar.vname ^ " -> " ^ b) dependencyList));*)
 
   if isAssumptionInList parent dependencyList then true, []
   else (
@@ -261,7 +267,16 @@ let rec resolveDependencies (oldFunctionMap: f StringMap.t) (nowFunctionMap: f S
                 let hasEntryForOld = hasIllegalStatus oldD.vname oldFunctionMap basicData.statusForOldElem Deleted in
                 let hasEntryForNow = hasIllegalStatus nowDName nowFunctionMap basicData.statusForNowElem Created in
 
-                hasEntryForOld || hasEntryForNow
+                let assumptionAlreadyExists = RenameAssumptionSet.exists (fun (g, n, _) ->
+                    match g with
+                      | Fundec f -> VarinfoMap.exists (fun v a -> f.svar.vname = v.vname && n <> a.new_method_name) function_dependencies
+                      | GlobalVar v -> VarinfoMap.exists (fun v2 newName -> v.vname = v2.vname && n <> newName) global_var_dependencies
+                  ) data.assumptions
+                in
+
+                if assumptionAlreadyExists then Printf.printf "ASSUMPTION ALREADY EXISTS\n";
+
+                hasEntryForOld || hasEntryForNow || assumptionAlreadyExists
               ) dependencySeq in
 
             let cyclicDependencyDetected, infectedAssumptions, dependencyList = if doMatch && not hasIllegalDependency then
@@ -278,7 +293,10 @@ let rec resolveDependencies (oldFunctionMap: f StringMap.t) (nowFunctionMap: f S
                   @ (VarinfoMap.to_seq global_var_dependencies |> Seq.map (fun (v, s) -> (GlobalVar v, s, true)) |> List.of_seq)
                 in
 
-                let a, infectedAssumptions = hasCyclicDependency (nowFundec, nowName) dependencyList data in
+                let a, infectedAssumptions = hasCyclicDependency (oldFundec, nowName) dependencyList data in
+
+                if a then Printf.printf "Cylic DETECTED\n";
+
                 let actInfectedAssumptions = List.map (fun (f, nowName) -> Fundec f, nowName) infectedAssumptions in
                 a, actInfectedAssumptions, renameAssumptionDependencyList
               else
