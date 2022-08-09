@@ -12,7 +12,14 @@ import sys
 import pandas as pd
 from pathlib import Path
 
-specific_commits = ["ae4670466c5db56493f356c1a81e8cbefef3271e"]
+#benefitted_commits = ['3a2d33d5a37c69e0e0a58773954fca65fc9c3efb', '2c877fa149842087cf24e4494601c71adf2290d5', '9a4c22db0388b3a6a6e061b3bf6e35b542ba020a',
+#                      'edda0c60b3df7910046d3d0f5325491319bd973f', 'e56154a68711422f6bb68e06bd5b35fa5bc6df31', '6199a89170273c507df58cec136040f8805ab799',
+#                      'd92583ed330f4c1f5f29fc1fc7c01d2a19d12319', '3f85d1dcc1b4860ccaeedc502dfaa1b6ef8a9b76', 'a0a9560258cef3fa7dcd16e5f24eb087867641a0',
+#                      '57957ab6cf7c74e593ff9644a22e921077fdc47a', '039b388c82b159479df6a6a02efe124b28fafbde', 'be14dbffef738935ce51e01d2ce20399c090399d',
+#                      '8f6a1b5318795f20fc01503803f612fa2ac5878d', '8db9d59dacb1f2eeef0b0450bd391e5b55710095', '43dc0b329567904b65aefb54b0e63c97a905bbce',
+#                      '99cc94529d3230b2c296959954031a1d396b49e9', '8f6a1b5318795f20fc01503803f612fa2ac5878d', '2f738d580544208189b0e31619bd915d34a92577']
+
+# specific_commits = ["ae4670466c5db56493f356c1a81e8cbefef3271e"]
 
 ################################################################################
 # Usage: python3 incremental_smallcommits.py <full_path_analyzer_dir> <number_of_cores>
@@ -32,7 +39,7 @@ build_compdb  = "build_compdb_zstd.sh"
 conf_base     = "min_incr_zstd" # very minimal: "zstd-minimal"
 conf_incrpost = "zstd-race-incrpostsolver"
 begin         = datetime(2021,8,1)
-to            = datetime(2021,8,4) # minimal subset: datetime(2021,8,4)
+to            = datetime(2021,10,1) # minimal subset: datetime(2021,8,4)
 diff_exclude  = ["build", "doc", "examples", "tests", "zlibWrapper", "contrib"]
 analyzer_dir  = sys.argv[1]
 only_collect_results = False # can be turned on to collect results, if data collection was aborted before the creation of result tables
@@ -69,7 +76,7 @@ def analyze_small_commits_in_repo(cwd, outdir, from_c, to_c):
     analyzed_commits = {}
     repo_path = os.path.join(cwd, repo_name)
 
-    for commit in itertools.islice(itertools.filterfalse(filter_commits_false_pred(repo_path), Repository(url, only_commits=specific_commits, only_no_merge=True, clone_repo_to=cwd).traverse_commits()), from_c, to_c):
+    for commit in itertools.islice(itertools.filterfalse(filter_commits_false_pred(repo_path), Repository(url, since=begin, to=to, only_no_merge=True, clone_repo_to=cwd).traverse_commits()), from_c, to_c):
         gr = Git(repo_path)
 
         #print("\n" + commit.hash)
@@ -263,7 +270,7 @@ def analyze_chunks_of_commits_in_parallel():
     processes = []
 
     # calculate actual number of interesting commits up-front to allow for similar load distribution
-    iter = itertools.filterfalse(filter_commits_false_pred(os.path.join(os.getcwd(), repo_name)), Repository(url, only_commits=specific_commits, only_no_merge=True, clone_repo_to=os.getcwd()).traverse_commits())
+    iter = itertools.filterfalse(filter_commits_false_pred(os.path.join(os.getcwd(), repo_name)), Repository(url, since=begin, to=to, only_no_merge=True, clone_repo_to=os.getcwd()).traverse_commits())
     num_commits = sum(1 for _ in iter)
     print("Number of potentially interesting commits:", num_commits)
     perprocess = num_commits // numcores if num_commits % numcores == 0 else num_commits // numcores + 1

@@ -28,16 +28,18 @@ def main():
     # results_file = Path("/home/tim/Code/analyzer_results/700/result_efficiency/total_results.csv")
     #results_file = Path("/home/tim/Code/analyzer_results/500/total_results.csv")
     #results_file = Path("/home/tim/Code/analyzer_results/v2/1200/result_efficiency/total_results.csv")
-    results_file = Path("/home/tim/Code/analyzer_results/v2/combination.csv")
-    #results_file = Path("result_efficiency/total_results.csv")
+    #results_file = Path("/home/tim/Code/analyzer_results/v2/combination.csv")
+    results_file = Path("result_efficiency/total_results.csv")
 
-    benefitted_commits = ['3a2d33d', '2c877fa', '9a4c22d', 'edda0c6', 'e56154a', '6199a89', 'd92583e', '3f85d1d',
-                          'a0a9560', '57957ab', '039b388', 'be14dbf', '8f6a1b5', '8db9d59', '43dc0b3', '99cc945',
-                          '8f6a1b5', '2f738d5']
+    # benefitted_commits = ['3a2d33d', '2c877fa', '9a4c22d', 'edda0c6', 'e56154a', '6199a89', 'd92583e', '3f85d1d',
+    #                       'a0a9560', '57957ab', '039b388', 'be14dbf', '8f6a1b5', '8db9d59', '43dc0b3', '99cc945',
+    #                       '8f6a1b5', '2f738d5']
+
+    benefitted_commits = []
 
     with open(results_file) as rf:
         reader = csv.DictReader(rf, delimiter=';')
-        # calc_locals_unchanged_funs(reader)
+        #calc_locals_unchanged_funs(reader)
         calc_runtime(reader, ed_runtime, le_runtime, ee_runtime, ee_rec_runtime, benefitted_commits)
         #calc_runtime(reader, ed_comp_runtime, le_comp_runtime, ee_comp_runtime, ee_comp_rec_runtime, benefitted_commits)
 
