@@ -11,6 +11,11 @@ le_comp_runtime = "Comparison runtime for commit (incremental + locals enabled)"
 ee_comp_runtime = "Comparison runtime for commit (incremental + everything enabled)"
 ee_comp_rec_runtime = "Comparison runtime for commit (incremental + everything enabled recursive)"
 
+ed_anal_runtime = "Anal runtime for commit (incremental + everything disabled)"
+le_anal_runtime = "Anal runtime for commit (incremental + locals enabled)"
+ee_anal_runtime = "Anal runtime for commit (incremental + everything enabled)"
+ee_anal_rec_runtime = "Anal runtime for commit (incremental + everything enabled recursive)"
+
 ee_cf = "Everything enabled - Changed functions"
 ee_af = "Everything enabled - Added functions"
 ee_rf = "Everything enabled - Removed functions"
@@ -25,11 +30,13 @@ ed_af = "Everything disabled - Added functions"
 ed_rf = "Everything disabled - Removed functions"
 
 def main():
-    # results_file = Path("/home/tim/Code/analyzer_results/700/result_efficiency/total_results.csv")
+    #results_file = Path("/home/tim/Code/analyzer_results/700/result_efficiency/total_results.csv")
     #results_file = Path("/home/tim/Code/analyzer_results/500/total_results.csv")
-    #results_file = Path("/home/tim/Code/analyzer_results/v2/1200/result_efficiency/total_results.csv")
-    #results_file = Path("/home/tim/Code/analyzer_results/v2/combination.csv")
-    results_file = Path("result_efficiency/total_results.csv")
+    results_file = Path("/home/tim/Code/analyzer_results/v2/1200/result_efficiency/total_results.csv")
+    #results_file = Path("/home/tim/Code/analyzer_results/v3/onr/total_results.csv")
+    #results_file = Path("result_efficiency/total_results.csv")
+    results_file = Path("/home/tim/Code/analyzer_results/v5/result_efficiency/total_results.csv")
+    results_file = Path("/home/tim/Code/analyzer_results/zstd/results.csv")
 
     # benefitted_commits = ['3a2d33d', '2c877fa', '9a4c22d', 'edda0c6', 'e56154a', '6199a89', 'd92583e', '3f85d1d',
     #                       'a0a9560', '57957ab', '039b388', 'be14dbf', '8f6a1b5', '8db9d59', '43dc0b3', '99cc945',
@@ -39,9 +46,11 @@ def main():
 
     with open(results_file) as rf:
         reader = csv.DictReader(rf, delimiter=';')
+        #calc_considered(reader)
         #calc_locals_unchanged_funs(reader)
-        calc_runtime(reader, ed_runtime, le_runtime, ee_runtime, ee_rec_runtime, benefitted_commits)
-        #calc_runtime(reader, ed_comp_runtime, le_comp_runtime, ee_comp_runtime, ee_comp_rec_runtime, benefitted_commits)
+        #calc_runtime(reader, ed_runtime, le_runtime, ee_runtime, ee_rec_runtime, benefitted_commits)
+        calc_runtime(reader, ed_comp_runtime, le_comp_runtime, ee_comp_runtime, ee_comp_rec_runtime, benefitted_commits)
+        #calc_runtime(reader, ed_anal_runtime, le_anal_runtime, ee_anal_runtime, ee_anal_rec_runtime, benefitted_commits)
 
 def calc_considered(reader):
     total = 0
@@ -62,6 +71,9 @@ def calc_locals_unchanged_funs(reader):
     benefited_rows_ee = []
     benefited_rows_ee_rec = []
 
+    total_rec = 0
+    total_not_rec = 0
+
     count = 0
 
     for row in reader:
@@ -70,6 +82,9 @@ def calc_locals_unchanged_funs(reader):
         changed_le = int(row[le_cf])
         changed_ee = int(row[ee_cf])
         changed_ee_rec = int(row[ee_rec_cf])
+
+        total_rec += changed_ee_rec
+        total_not_rec += changed_ee
 
         commit_ = row["Commit"]
         if changed_le < changed_ed:
@@ -90,6 +105,9 @@ def calc_locals_unchanged_funs(reader):
     print(f"Total rows benefited from local changes: {len(benefited_rows_le)}; {benefited_rows_le}")
     print(f"Total rows benefited from everything enabled: {len(benefited_rows_ee)}; {benefited_rows_ee}")
     print(f"Total rows benefited from everything enabled rec: {len(benefited_rows_ee_rec)}; {benefited_rows_ee_rec}")
+
+    print(f"total changed for rec: {total_rec} vs not rec {total_not_rec}")
+
     print(str(count))
 
 
@@ -114,6 +132,11 @@ def calc_runtime(reader, ed_runtime, le_runtime, ee_runtime, ee_rec_runtime, com
         total_runtime_le = float(row[le_runtime])
         runtime_ee = float(row[ee_runtime])
         runtime_ee_rec = float(row[ee_rec_runtime])
+
+        # if runtime_ee_rec < runtime_ee:
+        #     print(runtime_ee - runtime_ee_rec)
+        #     if runtime_ee - runtime_ee_rec > 1:
+        #         print(row["Commit"])
 
         total_ed_runtime += total_runtime_ed
         total_le_runtime += total_runtime_le

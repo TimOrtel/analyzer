@@ -29,7 +29,7 @@ renamed_a_function = 0
 def main():
     regression_folder = Path("./tests/regression")
 
-    task = TaskRenameFunction(False)
+    task = TaskRenameFunction(True)
 
     # test = regression_folder / "25-vla/02-loop.c"
     # execute_validation_test(test.parent, test, task)
@@ -47,7 +47,7 @@ def main():
         "44-trier_analyzer/21-Pproc.c"  # renamed function.
     ]
 
-    if isinstance(task, TaskRenameFunction) and task.use_recursive_detection_algorithm and False:
+    if isinstance(task, TaskRenameFunction) and task.use_recursive_detection_algorithm:
         excluded = excluded + [
             "44-trier_analyzer/23-rec0.c",
             "44-trier_analyzer/24-rec1.c",

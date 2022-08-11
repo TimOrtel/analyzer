@@ -38,6 +38,11 @@ header_comp_runtime_locals_enabled = "Comparison runtime for commit (incremental
 header_comp_runtime_everything_enabled = "Comparison runtime for commit (incremental + everything enabled)"
 header_comp_runtime_everything_enabled_rec = "Comparison runtime for commit (incremental + everything enabled recursive)"
 
+header_anal_runtime_everything_disabled = "Anal runtime for commit (incremental + everything disabled)"
+header_anal_runtime_locals_enabled = "Anal runtime for commit (incremental + locals enabled)"
+header_anal_runtime_everything_enabled = "Anal runtime for commit (incremental + everything enabled)"
+header_anal_runtime_everything_enabled_rec = "Anal runtime for commit (incremental + everything enabled recursive)"
+
 preparelog = "prepare.log"
 analyzerlog = "analyzer.log"
 comparelog = "compare.log"
@@ -106,14 +111,16 @@ def find_line(pattern, log):
 def extract_from_analyzer_log(log):
     total_runtime_pattern = 'TOTAL[ ]+(?P<runtime>[0-9\.]+) s'
     comp_runtime_pattern = '[ ]+compareCilFiles[ ]+(?P<comp_runtime>[0-9\.]+) s'
+    anal_runtime_pattern = '[ ]+analysis[ ]+(?P<anal_runtime>[0-9\.]+) s'
     change_info_pattern = 'change_info = { unchanged = (?P<unchanged>[0-9]*); changed = (?P<changed>[0-9]*); added = (?P<added>[0-9]*); removed = (?P<removed>[0-9]*) }'
     r = find_line(total_runtime_pattern, log)
+    ar = find_line(anal_runtime_pattern, log)
     cr = find_line(comp_runtime_pattern, log)
     ch = find_line(change_info_pattern, log) or {"unchanged": 0, "changed": 0, "added": 0, "removed": 0}
     if cr is not None:
-        d = dict(list(r.items()) + list(cr.items()) + list(ch.items()))
+        d = dict(list(r.items()) + list(ar.items()) + list(cr.items()) + list(ch.items()))
     else:
-        d = dict(list(r.items())  + list(ch.items()))
+        d = dict(list(r.items()) + list(ar.items()) + list(ch.items()))
     with open(log, "r") as file:
         num_racewarnings = file.read().count('[Warning][Race]')
         d["race_warnings"] = num_racewarnings

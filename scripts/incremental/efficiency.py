@@ -12,12 +12,14 @@ import sys
 import pandas as pd
 from pathlib import Path
 
-#benefitted_commits = ['3a2d33d5a37c69e0e0a58773954fca65fc9c3efb', '2c877fa149842087cf24e4494601c71adf2290d5', '9a4c22db0388b3a6a6e061b3bf6e35b542ba020a',
-#                      'edda0c60b3df7910046d3d0f5325491319bd973f', 'e56154a68711422f6bb68e06bd5b35fa5bc6df31', '6199a89170273c507df58cec136040f8805ab799',
-#                      'd92583ed330f4c1f5f29fc1fc7c01d2a19d12319', '3f85d1dcc1b4860ccaeedc502dfaa1b6ef8a9b76', 'a0a9560258cef3fa7dcd16e5f24eb087867641a0',
-#                      '57957ab6cf7c74e593ff9644a22e921077fdc47a', '039b388c82b159479df6a6a02efe124b28fafbde', 'be14dbffef738935ce51e01d2ce20399c090399d',
-#                      '8f6a1b5318795f20fc01503803f612fa2ac5878d', '8db9d59dacb1f2eeef0b0450bd391e5b55710095', '43dc0b329567904b65aefb54b0e63c97a905bbce',
-#                      '99cc94529d3230b2c296959954031a1d396b49e9', '8f6a1b5318795f20fc01503803f612fa2ac5878d', '2f738d580544208189b0e31619bd915d34a92577']
+# benefitted_commits = ['3a2d33d5a37c69e0e0a58773954fca65fc9c3efb', '2c877fa149842087cf24e4494601c71adf2290d5', '9a4c22db0388b3a6a6e061b3bf6e35b542ba020a',
+#                       'edda0c60b3df7910046d3d0f5325491319bd973f', 'e56154a68711422f6bb68e06bd5b35fa5bc6df31', '6199a89170273c507df58cec136040f8805ab799',
+#                       'd92583ed330f4c1f5f29fc1fc7c01d2a19d12319', '3f85d1dcc1b4860ccaeedc502dfaa1b6ef8a9b76', 'a0a9560258cef3fa7dcd16e5f24eb087867641a0',
+#                       '57957ab6cf7c74e593ff9644a22e921077fdc47a', '039b388c82b159479df6a6a02efe124b28fafbde', 'be14dbffef738935ce51e01d2ce20399c090399d',
+#                       '8f6a1b5318795f20fc01503803f612fa2ac5878d', '8db9d59dacb1f2eeef0b0450bd391e5b55710095', '43dc0b329567904b65aefb54b0e63c97a905bbce',
+#                       '99cc94529d3230b2c296959954031a1d396b49e9', '8f6a1b5318795f20fc01503803f612fa2ac5878d', '2f738d580544208189b0e31619bd915d34a92577']
+#
+# benefitted_commits = ['e56154a68711422f6bb68e06bd5b35fa5bc6df31']
 
 # specific_commits = ["ae4670466c5db56493f356c1a81e8cbefef3271e"]
 
@@ -32,14 +34,14 @@ if len(sys.argv) != 3:
       print("Wrong number of parameters.\nUse script like this: python3 parallel_benchmarking.py <path to goblint directory> <number of processes>")
       exit()
 result_dir    = os.path.join(os.getcwd(), 'result_efficiency')
-maxCLOC       = 50 # can be deactivated with None
+maxCLOC       = 5000 # can be deactivated with None
 url           = "https://github.com/facebook/zstd"
 repo_name     = "zstd"
 build_compdb  = "build_compdb_zstd.sh"
 conf_base     = "min_incr_zstd" # very minimal: "zstd-minimal"
 conf_incrpost = "zstd-race-incrpostsolver"
-begin         = datetime(2021,8,1)
-to            = datetime(2021,10,1) # minimal subset: datetime(2021,8,4)
+begin         = datetime(2018,1,1)
+to            = datetime(2022,1,1) # minimal subset: datetime(2021,8,4)
 diff_exclude  = ["build", "doc", "examples", "tests", "zlibWrapper", "contrib"]
 analyzer_dir  = sys.argv[1]
 only_collect_results = False # can be turned on to collect results, if data collection was aborted before the creation of result tables
@@ -66,7 +68,7 @@ coremapping = [coremapping1[i//2] if i%2==0 else coremapping2[i//2] for i in ran
 def filter_commits_false_pred(repo_path):
     def pred(c):
         relCLOC = utils.calculateRelCLOC(repo_path, c, diff_exclude)
-        return relCLOC == 0 or (maxCLOC is not None and relCLOC > maxCLOC)
+        return relCLOC == 0 or (maxCLOC is not None and relCLOC > maxCLOC) or relCLOC < 500
     return pred
 
 def analyze_small_commits_in_repo(cwd, outdir, from_c, to_c):
@@ -183,7 +185,11 @@ def collect_data(outdir):
             utils.header_comp_runtime_everything_disabled: [],
             utils.header_comp_runtime_locals_enabled: [],
             utils.header_comp_runtime_everything_enabled: [],
-            utils.header_comp_runtime_everything_enabled_rec: []
+            utils.header_comp_runtime_everything_enabled_rec: [],
+            utils.header_anal_runtime_everything_disabled: [],
+            utils.header_anal_runtime_locals_enabled: [],
+            utils.header_anal_runtime_everything_enabled: [],
+            utils.header_anal_runtime_everything_enabled_rec: []
             }
     for t in os.listdir(outdir):
         parentlog = os.path.join(outdir, t, 'parent', utils.analyzerlog)
@@ -207,6 +213,10 @@ def collect_data(outdir):
             data[utils.header_comp_runtime_locals_enabled].append(0)
             data[utils.header_comp_runtime_everything_enabled].append(0)
             data[utils.header_comp_runtime_everything_enabled_rec].append(0)
+            data[utils.header_anal_runtime_everything_disabled].append(0)
+            data[utils.header_anal_runtime_locals_enabled].append(0)
+            data[utils.header_anal_runtime_everything_enabled].append(0)
+            data[utils.header_anal_runtime_everything_enabled_rec].append(0)
             data["Everything enabled - Changed functions"].append(0)
             data["Everything enabled - Added functions"].append(0)
             data["Everything enabled - Removed functions"].append(0)
@@ -248,6 +258,11 @@ def collect_data(outdir):
         data[utils.header_comp_runtime_locals_enabled].append(float(local_enabled_info["comp_runtime"]))
         data[utils.header_comp_runtime_everything_disabled].append(float(everything_disabled_info["comp_runtime"]))
         data[utils.header_comp_runtime_everything_enabled_rec].append(float(everything_enabled_rec_info["comp_runtime"]))
+
+        data[utils.header_anal_runtime_everything_enabled].append(float(everything_enabled_info["anal_runtime"]))
+        data[utils.header_anal_runtime_locals_enabled].append(float(local_enabled_info["anal_runtime"]))
+        data[utils.header_anal_runtime_everything_disabled].append(float(everything_disabled_info["anal_runtime"]))
+        data[utils.header_anal_runtime_everything_enabled_rec].append(float(everything_enabled_rec_info["anal_runtime"]))
 
     return data
 
